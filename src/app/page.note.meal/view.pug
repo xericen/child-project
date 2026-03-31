@@ -1,0 +1,289 @@
+// HWP 파일 입력 (숨김)
+input(type="file",
+  '#hwpFileInput'="",
+  style="display:none",
+  '(change)'="onHwpFileSelected($event)")
+
+.container
+  .login-wrap
+    .header-row
+      span.btn-back('(click)'="goBack()") ← 뒤로
+      button.btn-stats(*ngIf="mode !== 'stats'",
+        '(click)'="goStats()",
+        '[disabled]'="statsLoading") 📊 통계
+
+    // HWP 파싱 로딩
+    .hwp-loading(*ngIf="hwpLoading")
+      .hwp-loading-content
+        p 📋 식단표를 분석하고 있습니다...
+        p.hwp-loading-sub 잠시만 기다려주세요
+
+    // 메뉴 모드
+    div(*ngIf="mode === 'menu'")
+      h1.title
+        | 식단표 📋
+
+      // 식단 안내 파일 영역
+      .file-section
+        .file-section-title 📎 식단 안내 파일
+
+        // 업로드 폼 (교사/원장만)
+        div(*ngIf="role === 'teacher' || role === 'director'")
+          .file-upload-row
+            select.file-month-select([(ngModel)]="uploadTargetMonth")
+              option('[value]'="currentMonthLabel") {{ currentMonthLabel }} (이번달)
+              option('[value]'="nextMonthLabel") {{ nextMonthLabel }} (다음달)
+            .file-upload-input-row
+              input.file-input(type="file",
+                '(change)'="onMealFileSelect($event)",
+                '#fileInput'="")
+              button.btn-file-upload('(click)'="uploadMealFile()",
+                '[disabled]'="!selectedMealFile") 업로드
+
+        // 이번달 파일
+        .file-month-group
+          .file-month-label 📅 {{ currentMonthLabel }}
+          div(*ngIf="currentMonthFiles.length === 0")
+            p.empty-file-msg 이번달 식단 안내 파일이 없습니다.
+          .file-list(*ngIf="currentMonthFiles.length > 0")
+            .file-item(*ngFor="let file of currentMonthFiles")
+              .file-info('(click)'="downloadMealFile(file)")
+                span.file-icon 📄
+                span.file-name {{ file.original_name }}
+                span.file-date {{ file.created_at }}
+              span.file-delete(*ngIf="role === 'teacher' || role === 'director'",
+                '(click)'="deleteMealFile(file.id)") ✕
+
+        // 다음달 파일
+        .file-month-group(*ngIf="nextMonthFiles.length > 0")
+          .file-month-label 📅 {{ nextMonthLabel }} (다음달)
+          .file-list
+            .file-item(*ngFor="let file of nextMonthFiles")
+              .file-info('(click)'="downloadMealFile(file)")
+                span.file-icon 📄
+                span.file-name {{ file.original_name }}
+                span.file-date {{ file.created_at }}
+              span.file-delete(*ngIf="role === 'teacher' || role === 'director'",
+                '(click)'="deleteMealFile(file.id)") ✕
+
+      // 식단 조회 버튼
+      .menu-buttons
+        button.menu-btn('(click)'="goMonthly()")
+          span.menu-icon 📅
+          span.menu-label 월간
+
+        button.menu-btn('(click)'="goDaily()")
+          span.menu-icon 📆
+          span.menu-label 날짜별
+
+        button.menu-btn.menu-btn-accent(*ngIf="role === 'teacher' || role === 'director'",
+          '(click)'="goNutritionDashboard()")
+          span.menu-icon 📊
+          span.menu-label 영양분석
+
+    // 월간 캘린더 모드
+    div(*ngIf="mode === 'monthly'")
+      .month-nav
+        span.nav-arrow('(click)'="prevMonth()") ◀
+        span.month-title {{ selectedMonth }}
+        span.nav-arrow('(click)'="nextMonth()") ▶
+
+      // HWP 식단표 업로드/상태 영역 (교사/원장만)
+      div(*ngIf="role === 'teacher' || role === 'director'")
+        // 업로드된 파일이 없으면 업로드 버튼 표시
+        .hwp-upload-area(*ngIf="!monthHwpFile",
+          '(click)'="triggerHwpUpload()")
+          span.hwp-upload-icon 📋
+          span.hwp-upload-text 식단표 업로드 (.hwp)
+
+        // 업로드된 파일이 있으면 파일 정보 + 삭제/재파싱 버튼 표시
+        .hwp-file-status(*ngIf="monthHwpFile")
+          .hwp-file-row
+            span.hwp-status-icon ✅
+            span.hwp-file-name {{ monthHwpFile.original_name }}
+          .hwp-file-actions
+            span.hwp-file-reparse('(click)'="reparseHwp()",
+              '[class.loading]'="reparseLoading") {{ reparseLoading ? '재파싱 중...' : '🔄 테마/색상 재파싱' }}
+            span.hwp-file-delete('(click)'="deleteMonthHwp()") 삭제
+
+      .calendar-grid
+        span.cal-header(*ngFor="let d of ['일','월','화','수','목','금','토']") {{ d }}
+        .cal-day-cell(*ngFor="let item of calendarDays",
+          '(click)'="onCalendarDayClick(item)",
+          '[class.has-meal]'="item.hasMeal",
+          '[class.empty]'="!item.day")
+          span.cal-day-num {{ item.day }}
+          span.cal-theme-badge(*ngIf="item.theme && getThemeInfo(item.theme)",
+            '[style.background]'="getThemeInfo(item.theme).color") {{ getThemeInfo(item.theme).emoji }}
+
+    // 날짜별 상세 모드
+    div(*ngIf="mode === 'daily'")
+      .day-nav
+        span.nav-arrow('(click)'="prevDay()") ◀
+        span.day-title {{ selectedDate }}
+        span.nav-arrow('(click)'="nextDay()") ▶
+
+      // 식단 목록
+      .day-theme-banner(*ngIf="getDayTheme() && getThemeInfo(getDayTheme())",
+        '[style.border-left-color]'="getThemeInfo(getDayTheme()).color")
+        span.day-theme-emoji {{ getThemeInfo(getDayTheme()).emoji }}
+        span.day-theme-name 오늘의 테마: {{ getDayTheme() }}
+
+      div(*ngIf="meals.length === 0")
+        p.empty-msg 등록된 식단이 없습니다.
+
+      .meal-card(*ngFor="let meal of meals",
+        '[class.allergy-danger]'="role === 'parent' && meal.allergy_match")
+        // 보기 모드
+        div(*ngIf="editingMealId !== meal.id")
+          .meal-header
+            span.meal-type {{ getMealIcon(meal.meal_type) }} {{ meal.meal_type }}
+            span.meal-actions(*ngIf="role === 'teacher' || role === 'director'")
+              span.meal-edit('(click)'="startEdit(meal)") ✎
+          .meal-content('[innerHTML]'="formatMealContent(meal.content)")
+          .meal-allergy-warning(*ngIf="role === 'parent' && meal.allergy_match")
+            | ⚠️ 알레르기 주의: {{ meal.matched_allergens?.join(', ') }}
+          img.meal-photo(*ngIf="meal.photo_path",
+            '[src]'="meal.photo_path")
+
+        // 수정 모드
+        div.edit-form(*ngIf="editingMealId === meal.id")
+          .form-group
+            label 식단 종류
+            select([(ngModel)]="editMealType")
+              option(value="오전간식") 🍪 오전간식
+              option(value="점심") 🍚 점심
+              option(value="오후간식") 🍪 오후간식
+          .form-group
+            label 식단 내용
+            textarea([(ngModel)]="editMealContent",
+              rows="3")
+          .edit-actions
+            button.btn-edit-save('(click)'="updateMeal()") 저장
+            button.btn-edit-cancel('(click)'="cancelEdit()") 취소
+
+    // 통계 모드
+    div(*ngIf="mode === 'stats'")
+      .month-nav
+        span.nav-arrow('(click)'="statsPrevMonth()") ◀
+        span.month-title 이번 달 영양 분석
+        span.nav-arrow('(click)'="statsNextMonth()") ▶
+      .stats-date-range {{ selectedMonth }}
+
+      // 로딩
+      div(*ngIf="statsLoading")
+        .stats-loading
+          p 📊 통계를 불러오는 중...
+
+      div(*ngIf="!statsLoading")
+        div(*ngIf="!statsData.total_meals")
+          p.empty-msg 해당 월 식단 데이터가 없습니다.
+
+        div(*ngIf="statsData.total_meals")
+
+          //- 상단 요약 카드
+          .ns-summary-cards
+            .ns-card.ns-card-green
+              .ns-card-num {{ calorieSufficient }}일
+              .ns-card-label 기준 충족
+            .ns-card.ns-card-orange
+              .ns-card-num {{ calorieDeficient }}일
+              .ns-card-label 기준 미달
+            .ns-card.ns-card-red
+              .ns-card-num {{ deficientNutrients.length }}개
+              .ns-card-label 부족 영양소
+
+          //- 알레르기 주의 통계 (모든 역할)
+          .ns-section.ns-parent-section(*ngIf="parentChildren.length > 0")
+            .ns-section-title-toggle('(click)'="allergyExpanded = !allergyExpanded; service.render()")
+              span(*ngIf="role === 'parent'") 👶 우리 아이 식단 안전
+              span(*ngIf="role === 'director'") ⚠️ 이번 주 알레르기 주의
+              span(*ngIf="role === 'teacher'") ⚠️ 우리반 알레르기 주의
+              span.ns-toggle-arrow('[class.expanded]'="allergyExpanded") ▼
+            div(*ngIf="allergyExpanded")
+              .ns-child-card(*ngFor="let child of parentChildren")
+                .ns-child-header
+                  span.ns-child-name {{ child.name }}
+                  span.ns-child-class(*ngIf="child.class_name && role !== 'parent'") ({{ child.class_name }})
+                  span.ns-child-age {{ child.age_group }} ({{ child.target_kcal }}kcal)
+                .ns-child-allergies(*ngIf="child.allergy_types.length > 0")
+                  span.ns-allergy-label 알레르기:
+                  span.ns-allergy-tag(*ngFor="let a of child.allergy_types") {{ a }}
+                .ns-child-alerts(*ngIf="child.allergy_days.length > 0")
+                  .ns-alert-title ⚠️ 이번 주 주의 식단
+                  .ns-alert-day(*ngFor="let day of child.allergy_days")
+                    span.ns-alert-date {{ day.date.substring(5) }}
+                    span.ns-alert-items
+                      span.ns-alert-item(*ngFor="let item of day.items")
+                        span(*ngIf="item.dish") {{ item.dish }}({{ item.allergy }})
+                        span(*ngIf="!item.dish") {{ item.allergy }}
+                .ns-child-safe(*ngIf="child.allergy_days.length === 0 && child.allergy_types.length > 0")
+                  | ✅ 이번 주 식단에 알레르기 해당 식품이 없습니다.
+
+          //- AI 로딩
+          div(*ngIf="aiLoading")
+            .stats-loading
+              p 🤖 AI 영양 분석 중...
+
+          //- 일별 열량 캘린더 (DB 실제 데이터, AI 대기 불필요)
+          .ns-section(*ngIf="statsCalendar.length > 0")
+            .ns-section-title 일별 어린이집 제공 열량
+            .ns-age-selector
+              button.ns-age-btn(*ngFor="let a of ageNutrition",
+                '[class.active]'="selectedAge === a.label",
+                (click)="selectAge(a.label)") {{ a.label }} ({{ a.kcal }}kcal)
+            .ns-cal-grid
+              span.ns-cal-header(*ngFor="let d of ['일','월','화','수','목','금','토']") {{ d }}
+              .ns-cal-day(*ngFor="let item of statsCalendar",
+                '[class.empty]'="!item.day",
+                '[class.sufficient]'="item.status === 'sufficient'",
+                '[class.deficient]'="item.status === 'deficient'")
+                span.ns-cal-num(*ngIf="item.day") {{ item.day }}
+                span.ns-cal-kcal(*ngIf="item.kcal") {{ item.kcal }}kcal
+                span.ns-cal-pct(*ngIf="item.pct") {{ item.pct }}%
+            .ns-cal-legend
+              span.ns-legend-item
+                span.ns-legend-dot.dot-sufficient
+                | 기준 충족 (90%↑)
+              span.ns-legend-item
+                span.ns-legend-dot.dot-deficient
+                | 기준 미달 (90%↓)
+            p.ns-cal-hint(*ngIf="calorieSufficient === 0 && calorieDeficient === 0") HWP 식단표를 업로드하면 열량 데이터가 자동으로 표시됩니다.
+
+          //- 영양소 충족률
+          .ns-section(*ngIf="!aiLoading && nutrientList.length > 0")
+            .ns-section-title-row
+              span.ns-section-title 이번 달 영양소 충족률
+              button.ns-refresh-btn('(click)'="refreshAiAnalysis()") 🔄 재분석
+            .ns-cache-info(*ngIf="aiCachedAt")
+              span.ns-cache-text 분석일: {{ aiCachedAt }}
+              span.ns-data-changed(*ngIf="aiDataChanged")  · 식단 변경됨
+            .ns-nutrient-list
+              .ns-nutrient-item(*ngFor="let n of nutrientList")
+                .ns-nutrient-info
+                  span.ns-nutrient-name {{ n.name }}
+                  span.ns-nutrient-target(*ngIf="n.target") (기준: {{ n.target }})
+                .ns-nutrient-bar-wrap
+                  .ns-nutrient-bar('[class.bar-sufficient]'="n.sufficient",
+                    '[class.bar-deficient]'="!n.sufficient",
+                    '[style.width.%]'="n.percent")
+                span.ns-nutrient-pct('[class.pct-sufficient]'="n.sufficient",
+                  '[class.pct-deficient]'="!n.sufficient") {{ n.percent }}%
+            .ns-nutrient-legend
+              span.ns-legend-item
+                span.ns-legend-dot.dot-bar-sufficient
+                | 80% 이상
+              span.ns-legend-item
+                span.ns-legend-dot.dot-bar-deficient
+                | 80% 미만 보충 필요
+
+          //- 보충 필요 영양소
+          .ns-section(*ngIf="!aiLoading && deficientNutrients.length > 0")
+            .ns-section-title 이번 달 보충이 필요한 영양소
+            .ns-deficient-list
+              .ns-deficient-card(*ngFor="let d of deficientNutrients")
+                .ns-deficient-header
+                  span.ns-deficient-emoji {{ d.emoji }}
+                  span.ns-deficient-name {{ d.name }} 부족 ({{ d.percent }}%)
+                  span.ns-deficient-target(*ngIf="d.target") 기준: {{ d.target }}
+                .ns-deficient-advice {{ d.advice }}

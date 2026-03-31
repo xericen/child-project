@@ -1,0 +1,12 @@
+{
+    "id": "page.note.today",
+    "mode": "page",
+    "title": "/note/today",
+    "namespace": "note.today",
+    "category": "note.today",
+    "viewuri": "/note/today",
+    "preview": "",
+    "controller": "base",
+    "layout": "layout.navbar",
+    "template": "wiz-page-note-today()"
+}

@@ -1,0 +1,12 @@
+{
+    "id": "page.note.profile",
+    "mode": "page",
+    "title": "/note/profile",
+    "namespace": "note.profile",
+    "category": "note.profile",
+    "viewuri": "/note/profile",
+    "preview": "",
+    "controller": "base",
+    "layout": "layout.navbar",
+    "template": "wiz-page-note-profile()"
+}

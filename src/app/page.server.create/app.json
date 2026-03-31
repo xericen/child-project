@@ -1,0 +1,12 @@
+{
+    "id": "page.server.create",
+    "mode": "page",
+    "title": "/server/create",
+    "namespace": "server.create",
+    "category": "server.create",
+    "viewuri": "/server/create",
+    "preview": "",
+    "controller": "base",
+    "layout": "layout.navbar",
+    "template": "wiz-page-server-create()"
+}

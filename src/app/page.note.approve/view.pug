@@ -1,0 +1,28 @@
+.container
+  .login-wrap
+
+    .header-row
+      span.btn-back('(click)'="goBack()") ← 뒤로
+      span
+
+    h1.title
+      | 가입
+      br
+      | 승인 ✅
+
+    p.subtitle 승인 대기 중인 사용자 목록입니다.
+
+    .approve-list
+      .approve-card(*ngFor="let user of pendingUsers")
+        .card-info
+          .card-name {{ user.nickname }}
+          .card-meta
+            span.role-badge {{ getRoleLabel(user.role) }}
+            span.card-detail(*ngIf="getDetail(user)") {{ getDetail(user) }}
+          .card-email {{ user.email }}
+        .card-actions
+          button.btn-approve('(click)'="approveUser(user)") 승인
+          button.btn-reject('(click)'="rejectUser(user)") 거절
+
+      .empty-state(*ngIf="pendingUsers.length === 0")
+        | 승인 대기 중인 사용자가 없습니다.

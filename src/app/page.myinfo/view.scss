@@ -1,0 +1,343 @@
+:host {
+    display: block;
+    height: 100%;
+}
+
+.container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    background: #eef0fb;
+}
+
+.login-wrap {
+    background: #ffffff;
+    border-radius: 32px;
+    padding: 40px 32px;
+    width: 360px;
+    box-shadow: 0 8px 32px rgba(80, 100, 220, 0.08);
+    position: relative;
+}
+
+.header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+}
+
+.back-btn {
+    border: none;
+    background: none;
+    color: #5b6ef5;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 0;
+}
+
+.edit-btn {
+    border: 1.5px solid #5b6ef5;
+    background: #fff;
+    color: #5b6ef5;
+    font-size: 0.82rem;
+    font-weight: 600;
+    padding: 6px 16px;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all 0.2s;
+
+    &:hover {
+        background: #5b6ef5;
+        color: #fff;
+    }
+}
+
+.title {
+    font-size: 2rem;
+    font-weight: 800;
+    color: #3a4de4;
+    line-height: 1.2;
+    margin-bottom: 24px;
+}
+
+.section-divider {
+    height: 1px;
+    background: #e0e3f5;
+    margin: 24px 0 16px;
+}
+
+.section-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #3a4de4;
+    margin-bottom: 16px;
+}
+
+.form-group {
+    margin-bottom: 16px;
+}
+
+.form-label {
+    font-size: 0.78rem;
+    color: #999;
+    margin-bottom: 6px;
+    display: block;
+}
+
+.input-wrap {
+    display: flex;
+    align-items: center;
+    border: 1.5px solid #e0e3f5;
+    border-radius: 12px;
+    padding: 12px 14px;
+    transition: border 0.2s;
+
+    &:focus-within {
+        border-color: #5b6ef5;
+    }
+}
+
+.form-input {
+    border: none;
+    outline: none;
+    flex: 1;
+    font-size: 0.95rem;
+    color: #333;
+    background: transparent;
+    width: 100%;
+
+    &[readonly] {
+        color: #666;
+        background: #f8f9fd;
+    }
+}
+
+// Info rows (view mode)
+.info-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+
+    & + .info-row {
+        border-top: 1px solid #f0f1f8;
+    }
+}
+
+.info-label {
+    font-size: 0.9rem;
+    color: #666;
+}
+
+.info-value {
+    font-size: 0.9rem;
+    color: #aaa;
+    font-weight: 500;
+
+    &.active {
+        color: #5b6ef5;
+        font-weight: 600;
+    }
+}
+
+// Twin options
+.twin-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.twin-btn {
+    padding: 8px 14px;
+    border: 1.5px solid #e0e3f5;
+    border-radius: 20px;
+    background: #fafbff;
+    font-size: 0.82rem;
+    color: #666;
+    cursor: pointer;
+    transition: all 0.2s;
+
+    &.active {
+        border-color: #5b6ef5;
+        background: #5b6ef5;
+        color: #fff;
+        font-weight: 600;
+    }
+
+    &:hover:not(.active) {
+        border-color: #b0b8f5;
+    }
+}
+
+// Allergy checks
+.allergy-checks {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.allergy-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 18px;
+    border: 1.5px solid #e0e3f5;
+    border-radius: 14px;
+    background: #fafbff;
+    cursor: pointer;
+    transition: all 0.2s;
+
+    &:hover {
+        border-color: #b0b8f5;
+        background: #f0f2ff;
+    }
+}
+
+.allergy-icon {
+    font-size: 1.5rem;
+}
+
+.allergy-label {
+    flex: 1;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #333;
+}
+
+.allergy-check {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    border: 2px solid #e0e3f5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+    color: #fff;
+    transition: all 0.2s;
+
+    &.checked {
+        background: #5b6ef5;
+        border-color: #5b6ef5;
+    }
+}
+
+// Toggle
+.toggle-group {
+    margin-bottom: 16px;
+}
+
+.toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 0;
+    cursor: pointer;
+
+    & + .toggle-row {
+        border-top: 1px solid #f0f1f8;
+    }
+}
+
+.toggle-label {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #444;
+}
+
+.toggle-switch {
+    width: 44px;
+    height: 24px;
+    border-radius: 12px;
+    background: #e0e3f5;
+    position: relative;
+    transition: background 0.2s;
+
+    &.on {
+        background: #5b6ef5;
+
+        .toggle-knob {
+            left: 22px;
+        }
+    }
+}
+
+.toggle-knob {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+    transition: left 0.2s;
+}
+
+// Buttons
+.btn-row {
+    display: flex;
+    gap: 12px;
+    margin-top: 24px;
+}
+
+.cancel-btn {
+    flex: 1;
+    padding: 14px;
+    border: 1.5px solid #e0e3f5;
+    border-radius: 12px;
+    background: #fff;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #666;
+    cursor: pointer;
+    transition: all 0.2s;
+
+    &:hover {
+        background: #f0f1f8;
+    }
+}
+
+.save-btn {
+    flex: 1;
+    padding: 14px;
+    border: none;
+    border-radius: 12px;
+    background: #5b6ef5;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #fff;
+    cursor: pointer;
+    transition: all 0.2s;
+
+    &:hover {
+        background: #3a4de4;
+    }
+}
+
+// 비밀번호 변경
+.password-change-section {
+    margin-top: 8px;
+}
+
+.pw-toggle-btn {
+    width: 100%;
+    padding: 12px;
+    border: 1.5px solid #e0e0e8;
+    border-radius: 12px;
+    background: #f8f8fc;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #666;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-bottom: 16px;
+
+    &:hover {
+        border-color: #5b6ef5;
+        color: #5b6ef5;
+    }
+}

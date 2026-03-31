@@ -1,0 +1,60 @@
+.container(*ngIf="!isLoading")
+  .login-wrap
+    .logo-icon
+
+    h1.title
+      | {{ serverName || 'child' }}
+      br
+      | Welcome!
+
+    p.subtitle(style="color:#222;") 로그인하여 서비스를 이용하세요.
+
+    .form-group
+      label.form-label 이메일
+      .input-wrap
+        input.form-input(
+          type="email",
+          placeholder="youremail@address.com",
+          [(ngModel)]="email"
+        )
+        span.check-icon(*ngIf="email.length > 0") ✓
+
+    .form-group
+      label.form-label 비밀번호
+      .input-wrap
+        input.form-input(
+          type="password",
+          placeholder="비밀번호",
+          [(ngModel)]="password",
+          (keydown.enter)="onLogin()"
+        )
+
+    .auto-login-row
+      label.auto-login-label
+        input.auto-login-check(type="checkbox",
+          [(ngModel)]="rememberMe")
+        span.auto-login-text 자동 로그인
+
+    .btn-row
+      span.btn-text 로그인
+      button.btn-circle(
+        type="button",
+        '(click)'="onLogin()"
+      ) →
+
+    .bottom-row(style="display:flex; gap:100px; justify-content:center; margin-top:20px;")
+      a(
+        '(click)'="goSignup()",
+        style="text-decoration:none; color:gray; cursor:pointer;"
+      ) 회원가입
+
+      a(
+        '[routerLink]'="'/forgot'",
+        style="text-decoration:none; color:red; cursor:pointer;"
+      ) 비밀번호 찾기
+
+    .bottom-row(style="display:flex; justify-content:center; margin-top:12px;")
+      a(
+        '(click)'="goServer()",
+        style="text-decoration:none; color:gray; cursor:pointer; font-size:0.85rem;"
+      ) 서버 생성 화면으로 돌아가기

@@ -1,0 +1,12 @@
+{
+    "id": "page.note.meal",
+    "mode": "page",
+    "title": "/note/meal",
+    "namespace": "note.meal",
+    "category": "note.meal",
+    "viewuri": "/note/meal",
+    "preview": "",
+    "controller": "base",
+    "layout": "layout.navbar",
+    "template": "wiz-page-note-meal()"
+}

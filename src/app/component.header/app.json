@@ -1,0 +1,12 @@
+{
+    "id": "component.header",
+    "mode": "component",
+    "title": "header",
+    "namespace": "header",
+    "category": "common",
+    "viewuri": "",
+    "preview": "",
+    "controller": "base",
+    "layout": "",
+    "template": "wiz-component-header()"
+}

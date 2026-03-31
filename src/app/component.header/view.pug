@@ -1,0 +1,56 @@
+.header-icons
+    button.icon-btn.allergy-btn(*ngIf="role === 'teacher' || role === 'director'",
+        '(click)'="toggleAllergyPanel($event)")
+        span.allergy-emoji ⚠️
+        span.badge.allergy-badge(*ngIf="allergyCount > 0") {{ allergyCount }}
+    button.icon-btn.bell-btn('(click)'="toggleNotifications($event)")
+        span.bell-emoji 🔔
+        span.badge(*ngIf="unreadCount > 0") {{ unreadCount }}
+    button.icon-btn.more-btn('(click)'="toggleDropdown($event)")
+        span.more-dots ···
+.overlay-backdrop(*ngIf="showDropdown || showNotifications || showAllergyPanel",
+    '(click)'="closeAll()")
+.allergy-panel(*ngIf="showAllergyPanel")
+    .panel-header
+        span ⚠️ 이번 주 알레르기 주의
+        span.week-range {{ allergyWeekStart }} ~ {{ allergyWeekEnd }}
+    .panel-body
+        .panel-empty(*ngIf="allergyAlerts.length === 0") 이번 주 알레르기 주의 아동이 없습니다.
+        .allergy-item(*ngFor="let alert of allergyAlerts")
+            .allergy-item-header
+                span.child-name {{ alert.child_name }}
+                span.severe-tag(*ngIf="alert.is_severe") 중증
+            .allergy-types
+                span.allergy-label 알레르기:
+                span.allergy-type-item(*ngFor="let a of alert.allergies") {{ a }}
+            .matched-foods(*ngIf="alert.matched_foods && alert.matched_foods.length > 0")
+                span.food-label 해당 식단:
+                span.food-item(*ngFor="let food of alert.matched_foods") {{ food }}
+.notification-panel(*ngIf="showNotifications")
+    .panel-header
+        span 알림
+        button.read-all-btn(*ngIf="unreadCount > 0",
+            '(click)'="readAll()") 모두 읽음
+    .panel-body
+        .panel-empty(*ngIf="notifications.length === 0") 알림이 없습니다.
+        .noti-item(*ngFor="let noti of notifications",
+            '[class.unread]'="!noti.is_read",
+            '(click)'="readNotification(noti)")
+            .noti-icon {{ noti.type === 'meal' ? '🍱' : noti.type === 'photo' ? '📷' : noti.type === 'approval' ? '📋' : '🔔' }}
+            .noti-content
+                .noti-title {{ noti.title }}
+                .noti-time {{ timeAgo(noti.created_at) }}
+.header-dropdown(*ngIf="showDropdown")
+    button.header-dropdown-item('(click)'="goMyInfo()")
+        span.item-icon 👤
+        span 회원정보
+    button.header-dropdown-item(*ngIf="role === 'parent'",
+        '(click)'="goContact()")
+        span.item-icon 📞
+        span 문의하기
+    button.header-dropdown-item.leave-btn('(click)'="leaveServer()")
+        span.item-icon 🏫
+        span 서버 나가기
+    button.header-dropdown-item.logout-btn('(click)'="logout()")
+        span.item-icon 🚪
+        span 로그아웃

@@ -1,0 +1,12 @@
+{
+    "id": "page.note.activity",
+    "mode": "page",
+    "title": "/note/activity",
+    "namespace": "note.activity",
+    "category": "note.activity",
+    "viewuri": "/note/activity",
+    "preview": "",
+    "controller": "base",
+    "layout": "layout.navbar",
+    "template": "wiz-page-note-activity()"
+}

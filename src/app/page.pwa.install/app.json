@@ -1,0 +1,12 @@
+{
+    "id": "page.pwa.install",
+    "mode": "page",
+    "title": "/install",
+    "namespace": "pwa.install",
+    "category": "pwa.install",
+    "viewuri": "/install",
+    "preview": "",
+    "controller": "base",
+    "layout": "layout.navbar",
+    "template": "wiz-page-pwa-install()"
+}

@@ -1,0 +1,30 @@
+.container
+  .login-wrap
+    .logo-icon
+
+    h1.title
+      | child
+      br
+      | 참여하기
+
+    p.subtitle 원장님에게 받은 서버 회원번호를 입력하세요.
+
+    .form-group
+      label.form-label 서버 회원번호
+      .input-wrap('[class.error]'="errorMessage.length > 0")
+        input.form-input(type="text",
+          placeholder="서버 코드를 입력하세요",
+          [(ngModel)]="serverCode",
+          '(input)'="onInput()",
+          maxlength="8",
+          style="text-transform: uppercase; letter-spacing: 2px; font-weight: 700;")
+
+    p.error-msg(*ngIf="errorMessage.length > 0") {{ errorMessage }}
+
+    .btn-row
+      a.btn-back('(click)'="goBack()") ← 돌아가기
+      .btn-right
+        span.btn-text 참여
+        button.btn-circle(type="button",
+          '[disabled]'="serverCode.length === 0",
+          '(click)'="verifyCode()") →

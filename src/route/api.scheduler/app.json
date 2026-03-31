@@ -1,0 +1,8 @@
+{
+    "id": "api.scheduler",
+    "title": "Scheduler API",
+    "route": "/api/scheduler/<action>",
+    "category": "",
+    "viewuri": "",
+    "controller": ""
+}

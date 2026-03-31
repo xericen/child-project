@@ -1,0 +1,180 @@
+.container
+  .login-wrap
+    .logo-icon
+
+    h1.title
+      | child
+      br
+      | signup!
+
+    p.server-badge(*ngIf="serverName")
+      span.server-icon 🏫
+      | &nbsp;{{ serverName }}
+
+    .step-indicator
+      .step-dot(*ngFor="let s of [1,2,3]", '[class.active]'="s <= step", '[class.current]'="s === step")
+
+    .step-1(*ngIf="step === 1")
+      .form-group
+        label.form-label 이름
+        .input-wrap
+          input.form-input(
+            type="text",
+            placeholder="이름",
+            [(ngModel)]="nickname"
+          )
+          span.check-icon(*ngIf="nickname.length > 0") ✓
+
+      .form-group
+        label.form-label 전화번호
+        .input-wrap('[class.error]'="phone.length > 0 && !isValidPhone")
+          input.form-input(
+            type="tel",
+            placeholder="010-0000-0000",
+            [(ngModel)]="phone",
+            '(ngModelChange)'="formatPhone()"
+          )
+          span.check-icon(*ngIf="isValidPhone && phone.length > 0") ✓
+          span.error-icon(*ngIf="phone.length > 0 && !isValidPhone") ✗
+        p.error-msg(*ngIf="phone.length > 0 && !isValidPhone") 010-0000-0000 형식으로 입력해주세요.
+
+      .form-group
+        label.form-label 역할 선택
+        .input-wrap
+          select.form-input(
+            [(ngModel)]="selectedRole"
+          )
+            option(value="") select role
+            option(value="parent") 부모
+            option(value="teacher") 교사
+
+      .form-group(*ngIf="selectedRole === 'parent'")
+        label.form-label 자녀 이름
+        .input-wrap
+          input.form-input(
+            type="text",
+            placeholder="child name",
+            [(ngModel)]="childName"
+          )
+          span.check-icon(*ngIf="childName.length > 0") ✓
+
+      .form-group(*ngIf="selectedRole === 'parent'")
+        label.form-label 자녀 반
+        .input-group
+          input.form-input(
+            type="text",
+            placeholder="  ",
+            [(ngModel)]="className"
+          )
+          span.input-suffix 반
+          span.check-icon(*ngIf="className.length > 0") ✓
+
+      .form-group(*ngIf="selectedRole === 'parent'")
+        label.form-label 자녀 생년월일
+        .date-wheel-wrap
+          .wheel-col
+            .wheel-viewport(#yearWheel="")
+              .wheel-item(*ngFor="let y of years",
+                '[class.selected]'="y === birthYear",
+                '(click)'="selectDate('year', y)")
+                | {{ y }}년
+          .wheel-col
+            .wheel-viewport(#monthWheel="")
+              .wheel-item(*ngFor="let m of months",
+                '[class.selected]'="m === birthMonth",
+                '(click)'="selectDate('month', m)")
+                | {{ m }}월
+          .wheel-col
+            .wheel-viewport(#dayWheel="")
+              .wheel-item(*ngFor="let d of days",
+                '[class.selected]'="d === birthDay",
+                '(click)'="selectDate('day', d)")
+                | {{ d }}일
+        .date-display {{ birthYear }}년 {{ birthMonth }}월 {{ birthDay }}일
+
+      .form-group(*ngIf="selectedRole === 'teacher'")
+        label.form-label 담당 반
+        .input-group
+          input.form-input(
+            type="text",
+            placeholder="  ",
+            [(ngModel)]="className"
+          )
+          span.input-suffix 반
+          span.check-icon(*ngIf="className.length > 0") ✓
+
+      .btn-row
+        span.btn-text 다음
+        button.btn-circle(
+          type="button",
+          '[disabled]'="!isStep1Complete",
+          '(click)'="goStep2()"
+        ) →
+
+    .step-2(*ngIf="step === 2")
+      .form-group
+        label.form-label 이메일
+        .input-wrap('[class.error]'="email.length > 0 && !isValidEmail")
+          input.form-input(
+            type="email",
+            placeholder="youremail@address.com",
+            [(ngModel)]="email"
+          )
+          span.check-icon(*ngIf="isValidEmail") ✓
+          span.error-icon(*ngIf="email.length > 0 && !isValidEmail") ✗
+        p.error-msg(*ngIf="email.length > 0 && !isValidEmail") 올바른 이메일 형식을 입력해주세요.
+
+      .form-group
+        label.form-label 비밀번호
+        .input-wrap
+          input.form-input(
+            type="password",
+            placeholder="password",
+            [(ngModel)]="password"
+          )
+
+      .btn-row
+        a.btn-back('(click)'="prevStep()") ← 이전
+        .btn-right
+          span.btn-text 인증코드 발송
+          button.btn-circle(
+            type="button",
+            '[disabled]'="!isStep2Complete",
+            '(click)'="sendCode()"
+          ) →
+
+    .step-3(*ngIf="step === 3")
+      p.subtitle {{ email }} 로 인증코드를 발송했습니다.
+      .form-group
+        label.form-label 인증코드 입력
+        .code-input-wrap(
+          '(paste)'="onCodePaste($event)"
+        )
+          .code-box(*ngFor="let d of codeDigits; let i = index; trackBy: trackByIndex")
+            input.code-digit(
+              type="text",
+              maxlength="1",
+              inputmode="numeric",
+              autocomplete="off",
+              '[value]'="codeDigits[i]",
+              '(keydown)'="onCodeKeydown($event, i)"
+            )
+
+      .resend-wrap
+        button.resend-btn(
+          type="button",
+          '(click)'="resendCode()")
+          span 인증번호 재전송
+
+      .btn-row
+        a.btn-back('(click)'="prevStep()") ← 이전
+        .btn-right
+          span.btn-text 인증확인
+          button.btn-circle(
+            type="button",
+            '[disabled]'="!codeComplete",
+            '(click)'="verifyCode()"
+          ) →
+
+    .bottom-row
+      a.link-gray('(click)'="navigate('/main')") 로그인으로 돌아가기

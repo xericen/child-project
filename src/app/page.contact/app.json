@@ -1,0 +1,12 @@
+{
+    "id": "page.contact",
+    "mode": "page",
+    "title": "/contact",
+    "namespace": "contact",
+    "category": "contact",
+    "viewuri": "/contact",
+    "preview": "",
+    "controller": "base",
+    "layout": "layout.navbar",
+    "template": "wiz-page-contact()"
+}

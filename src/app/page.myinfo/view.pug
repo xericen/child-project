@@ -1,0 +1,195 @@
+.container
+  .login-wrap
+
+    .header-row
+      button.back-btn('(click)'="goBack()") ← 돌아가기
+      button.edit-btn(*ngIf="!isEditing",
+        '(click)'="startEdit()") 편집
+
+    h1.title
+      | 회원
+      br
+      | 정보
+
+    //- 서버 회원 코드 (원장만, 항상 읽기 전용)
+    .form-group(*ngIf="role === 'director' && serverCode")
+      label.form-label 서버 회원 코드
+      .input-wrap
+        input.form-input(type="text",
+          [value]="serverCode",
+          readonly,
+          style="letter-spacing: 2px; font-weight: 700;")
+
+    //- 이메일 (항상 읽기 전용)
+    .form-group
+      label.form-label 이메일
+      .input-wrap
+        input.form-input(type="text",
+          [value]="email",
+          readonly)
+
+    //- 역할
+    .form-group
+      label.form-label 역할
+      .input-wrap
+        input.form-input(type="text",
+          [value]="role === 'parent' ? '부모' : role === 'teacher' ? '교사' : role === 'director' ? '원장' : role",
+          readonly)
+
+    //- 이름
+    .form-group
+      label.form-label 이름
+      .input-wrap
+        input.form-input(*ngIf="!isEditing",
+          type="text",
+          [value]="nickname",
+          readonly)
+        input.form-input(*ngIf="isEditing",
+          type="text",
+          placeholder="이름을 입력해주세요",
+          [(ngModel)]="nickname")
+
+    //- 전화번호 (모든 역할에서 표시)
+    .form-group
+      label.form-label 전화번호
+      .input-wrap
+        input.form-input(*ngIf="!isEditing",
+          type="text",
+          [value]="phone || '미등록'",
+          readonly)
+        input.form-input(*ngIf="isEditing",
+          type="tel",
+          placeholder="010-0000-0000",
+          [(ngModel)]="phone",
+          '(ngModelChange)'="formatPhone()")
+
+    //- 이하 자녀 관련 정보는 부모만 표시
+    div(*ngIf="role === 'parent'")
+      //- 자녀 이름 (읽기 전용)
+      .form-group
+        label.form-label 자녀 이름
+        .input-wrap
+          input.form-input(type="text",
+            [value]="childName",
+            readonly)
+
+      //- 생년월일
+      .form-group
+        label.form-label 생년월일
+        .input-wrap
+          input.form-input(*ngIf="!isEditing",
+            type="text",
+            [value]="birthDate",
+            readonly)
+          input.form-input(*ngIf="isEditing",
+            type="date",
+            [(ngModel)]="birthDate")
+
+      //- 쌍둥이 여부
+      .form-group
+        label.form-label 쌍둥이 여부
+        div(*ngIf="!isEditing")
+          .input-wrap
+            input.form-input(type="text",
+              [value]="twinType",
+              readonly)
+        .twin-options(*ngIf="isEditing")
+          button.twin-btn(*ngFor="let opt of twinOptions",
+            [class.active]="twinType === opt",
+            '(click)'="selectTwin(opt)") {{ opt }}
+
+      //- 알레르기 섹션
+      .section-divider
+      h2.section-title 알레르기 정보
+
+      div(*ngIf="!isEditing")
+        .info-row
+          span.info-label 계란
+          span.info-value([class.active]="allergies.egg") {{ allergies.egg ? '있음' : '없음' }}
+        .info-row
+          span.info-label 우유
+          span.info-value([class.active]="allergies.milk") {{ allergies.milk ? '있음' : '없음' }}
+        .info-row
+          span.info-label 땅콩
+          span.info-value([class.active]="allergies.peanut") {{ allergies.peanut ? '있음' : '없음' }}
+        .info-row(*ngIf="otherAllergy")
+          span.info-label 기타
+          span.info-value.active {{ otherAllergy }}
+        .info-row
+          span.info-label 중증 알레르기
+          span.info-value([class.active]="isSevere") {{ isSevere ? '예' : '아니오' }}
+        .info-row
+          span.info-label 대체식 필요
+          span.info-value([class.active]="needsSubstitute") {{ needsSubstitute ? '예' : '아니오' }}
+
+      div(*ngIf="isEditing")
+        .allergy-checks
+          .allergy-item('(click)'="toggleAllergy('egg')")
+            span.allergy-icon 🥚
+            span.allergy-label 계란
+            span.allergy-check([class.checked]="allergies.egg")
+              span(*ngIf="allergies.egg") ✓
+
+          .allergy-item('(click)'="toggleAllergy('milk')")
+            span.allergy-icon 🥛
+            span.allergy-label 우유
+            span.allergy-check([class.checked]="allergies.milk")
+              span(*ngIf="allergies.milk") ✓
+
+          .allergy-item('(click)'="toggleAllergy('peanut')")
+            span.allergy-icon 🥜
+            span.allergy-label 땅콩
+            span.allergy-check([class.checked]="allergies.peanut")
+              span(*ngIf="allergies.peanut") ✓
+
+        .form-group
+          label.form-label 기타 알레르기
+          .input-wrap
+            input.form-input(type="text",
+              placeholder="기타 알레르기를 입력해주세요",
+              [(ngModel)]="otherAllergy")
+
+        .toggle-group
+          .toggle-row('(click)'="toggleSevere()")
+            span.toggle-label 중증 알레르기
+            span.toggle-switch([class.on]="isSevere")
+              span.toggle-knob
+
+          .toggle-row('(click)'="toggleSubstitute()")
+            span.toggle-label 대체식 필요
+            span.toggle-switch([class.on]="needsSubstitute")
+              span.toggle-knob
+
+    //- 편집 모드 버튼
+    .btn-row(*ngIf="isEditing")
+      button.cancel-btn('(click)'="cancelEdit()") 취소
+      button.save-btn('(click)'="saveMyInfo()") 저장
+
+    //- 비밀번호 변경 섹션
+    .section-divider
+    .password-change-section
+      button.pw-toggle-btn('(click)'="togglePasswordChange()")
+        | {{ showPasswordChange ? '비밀번호 변경 닫기' : '🔒 비밀번호 변경' }}
+
+      div(*ngIf="showPasswordChange")
+        .form-group
+          label.form-label 현재 비밀번호
+          .input-wrap
+            input.form-input(type="password",
+              placeholder="현재 비밀번호",
+              [(ngModel)]="currentPassword")
+        .form-group
+          label.form-label 새 비밀번호
+          .input-wrap
+            input.form-input(type="password",
+              placeholder="새 비밀번호 (4자 이상)",
+              [(ngModel)]="newPassword")
+        .form-group
+          label.form-label 비밀번호 확인
+          .input-wrap
+            input.form-input(type="password",
+              placeholder="새 비밀번호 확인",
+              [(ngModel)]="confirmPassword")
+        .btn-row
+          button.cancel-btn('(click)'="togglePasswordChange()") 취소
+          button.save-btn('(click)'="changePassword()") 변경

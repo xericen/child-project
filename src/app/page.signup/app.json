@@ -1,0 +1,12 @@
+{
+    "mode": "page",
+    "id": "page.signup",
+    "title": "signup",
+    "namespace": "signup",
+    "viewuri": "/signup",
+    "category": "",
+    "preview": "/signup",
+    "controller": "base",
+    "template": "wiz-page-signup()",
+    "layout": "layout.navbar"
+}

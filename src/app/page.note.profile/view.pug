@@ -1,0 +1,132 @@
+.container
+  .login-wrap
+
+    .header-row
+      span.btn-back('(click)'="goBack()") ← 뒤로
+      span
+
+    h1.title(*ngIf="role === 'director'")
+      | 프로필 👤
+
+    h1.title(*ngIf="role === 'teacher'")
+      | 아이 프로필 👶
+
+    //- 원장 뷰: 반별 그룹핑
+    div(*ngIf="role === 'director'")
+      div(*ngFor="let cls of classes")
+        .section-title-row
+          .section-title 🏫 {{ cls.class_name }}
+          span.btn-delete-class('(click)'="deleteClass(cls.class_name)",
+            title="반 전체 삭제") ✕
+
+        //- 해당 반 교사
+        .profile-grid(*ngIf="cls.teachers.length > 0")
+          .profile-card(*ngFor="let teacher of cls.teachers")
+            .card-top
+              .card-avatar
+                span.avatar-icon 👩‍🏫
+              .card-info
+                .card-name {{ teacher.name }}
+              span.btn-delete('(click)'="deleteTeacher(teacher)") ✕
+
+            .card-bottom
+              button.btn-profile('(click)'="toggleDetail(teacher)")
+                span.btn-icon 👤
+                span(*ngIf="!teacher.showDetail") 프로필 보기
+                span(*ngIf="teacher.showDetail") 프로필 닫기
+
+            .card-detail(*ngIf="teacher.showDetail")
+              .detail-row
+                span.detail-label 전화번호
+                span.detail-value {{ teacher.phone || '미등록' }}
+
+        //- 해당 반 어린이
+        .profile-grid(*ngIf="cls.children.length > 0")
+          .profile-card(*ngFor="let child of cls.children")
+            .card-top
+              .card-avatar
+                span.avatar-icon 👶
+              .card-info
+                .card-name
+                  | {{ child.name }}
+                  span(*ngIf="child.is_birthday") &nbsp;🎂
+                .card-sub {{ child.nickname }}
+              span.btn-delete('(click)'="deleteChild(child)") ✕
+
+            .card-bottom(*ngIf="child.has_childcheck")
+              button.btn-profile('(click)'="toggleDetail(child)")
+                span.btn-icon 👤
+                span(*ngIf="!child.showDetail") 프로필 보기
+                span(*ngIf="child.showDetail") 프로필 닫기
+
+            .card-bottom(*ngIf="!child.has_childcheck")
+              span.text-muted(style="font-size: 0.8rem; color: #999;") 아이 체크 미완료
+
+            .card-detail(*ngIf="child.showDetail && child.has_childcheck")
+              .detail-row
+                span.detail-label 부모 이름
+                span.detail-value {{ child.parent_name || '-' }}
+              .detail-row.phone-row
+                span.detail-label 부모 전화번호
+                span.detail-value.phone-value {{ child.parent_phone || '-' }}
+              .detail-row
+                span.detail-label 쌍둥이
+                span.detail-value {{ child.twin_type }}
+              .detail-row
+                span.detail-label 알레르기
+                span.detail-value {{ getAllergies(child) }}
+              .detail-row(*ngIf="child.is_severe")
+                span.detail-label 중증 알레르기
+                span.detail-value.warn 예
+              .detail-row(*ngIf="child.needs_substitute")
+                span.detail-label 대체식 필요
+                span.detail-value.warn 예
+
+    //- 교사 뷰: 기존대로 본인 반 어린이만 표시
+    div(*ngIf="role === 'teacher'")
+      .profile-grid(*ngIf="children.length > 0")
+        .profile-card(*ngFor="let child of children")
+          .card-top
+            .card-avatar
+              span.avatar-icon 👶
+            .card-info
+              .card-name
+                | {{ child.name }}
+                span(*ngIf="child.is_birthday") &nbsp;🎂
+              .card-sub {{ child.nickname }}
+              .card-class(*ngIf="child.class_name") {{ child.class_name }}
+
+          .card-bottom(*ngIf="child.has_childcheck")
+            button.btn-profile('(click)'="toggleDetail(child)")
+              span.btn-icon 👤
+              span(*ngIf="!child.showDetail") 프로필 보기
+              span(*ngIf="child.showDetail") 프로필 닫기
+
+          .card-bottom(*ngIf="!child.has_childcheck")
+            span.text-muted(style="font-size: 0.8rem; color: #999;") 아이 체크 미완료
+
+          .card-detail(*ngIf="child.showDetail && child.has_childcheck")
+            .detail-row
+              span.detail-label 부모 이름
+              span.detail-value {{ child.parent_name || '-' }}
+            .detail-row.phone-row
+              span.detail-label 부모 전화번호
+              span.detail-value.phone-value {{ child.parent_phone || '-' }}
+            .detail-row
+              span.detail-label 쌍둥이
+              span.detail-value {{ child.twin_type }}
+            .detail-row
+              span.detail-label 알레르기
+              span.detail-value {{ getAllergies(child) }}
+            .detail-row(*ngIf="child.is_severe")
+              span.detail-label 중증 알레르기
+              span.detail-value.warn 예
+            .detail-row(*ngIf="child.needs_substitute")
+              span.detail-label 대체식 필요
+              span.detail-value.warn 예
+
+    .empty-state(*ngIf="role === 'director' && classes.length === 0")
+      | 등록된 프로필이 없습니다.
+
+    .empty-state(*ngIf="role === 'teacher' && children.length === 0")
+      | 등록된 프로필이 없습니다.

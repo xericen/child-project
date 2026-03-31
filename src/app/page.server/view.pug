@@ -1,0 +1,17 @@
+.container(*ngIf="!isLoading")
+  .login-wrap
+    .logo-icon
+
+    h1.title
+      | child
+
+    p.subtitle 어린이집 서버를 생성하거나 참여하세요.
+
+    .btn-group
+      button.btn-primary(type="button", '(click)'="goCreate()")
+        span.btn-icon 🏫
+        span 어린이집 방 생성
+
+      button.btn-secondary(type="button", '(click)'="goJoin()")
+        span.btn-icon 🔑
+        span 참여

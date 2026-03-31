@@ -1,0 +1,105 @@
+.container
+  .login-wrap
+    .logo-icon
+
+    h1.title
+      | child
+      br
+      | 어린이집 생성
+
+    .step-indicator
+      .step-dot(*ngFor="let s of [1,2,3]", '[class.active]'="s <= step", '[class.current]'="s === step")
+
+    // 결과 화면 (서버 코드 발급 완료)
+    .result-wrap(*ngIf="showResult")
+      .result-icon 🎉
+      h2.result-title child welcome!
+      p.result-desc 어린이집 서버가 생성되었습니다.
+      .server-code-box
+        label.code-label 서버 회원번호
+        .code-display {{ serverCode }}
+        p.code-hint 이 번호를 교사·부모에게 공유하세요.
+      button.btn-go-login(type="button", '(click)'="goLogin()") 로그인 화면으로 이동
+
+    // Step 1: 기본 정보
+    .step-1(*ngIf="step === 1 && !showResult")
+      .form-group
+        label.form-label 원장 이름
+        .input-wrap
+          input.form-input(type="text", placeholder="원장님 이름", [(ngModel)]="directorName")
+          span.check-icon(*ngIf="directorName.length > 0") ✓
+
+      .form-group
+        label.form-label 전화번호
+        .input-wrap('[class.error]'="phone.length > 0 && !isValidPhone")
+          input.form-input(type="tel",
+            placeholder="010-0000-0000",
+            [(ngModel)]="phone",
+            '(ngModelChange)'="formatPhone()")
+          span.check-icon(*ngIf="isValidPhone && phone.length > 0") ✓
+          span.error-icon(*ngIf="phone.length > 0 && !isValidPhone") ✗
+        p.error-msg(*ngIf="phone.length > 0 && !isValidPhone") 010-0000-0000 형식으로 입력해주세요.
+
+      .form-group
+        label.form-label 어린이집명
+        .input-group
+          input.form-input(type="text", placeholder="  ", [(ngModel)]="serverName")
+          span.input-suffix 어린이집
+          span.check-icon(*ngIf="serverName.length > 0") ✓
+
+      .btn-row
+        a.btn-back('(click)'="goBack()") ← 돌아가기
+        .btn-right
+          span.btn-text 다음
+          button.btn-circle(type="button", '[disabled]'="!isStep1Complete", '(click)'="goStep2()") →
+
+    // Step 2: 계정 정보
+    .step-2(*ngIf="step === 2 && !showResult")
+      .form-group
+        label.form-label 이메일
+        .input-wrap('[class.error]'="email.length > 0 && !isValidEmail")
+          input.form-input(type="email", placeholder="youremail@address.com", [(ngModel)]="email")
+          span.check-icon(*ngIf="isValidEmail") ✓
+          span.error-icon(*ngIf="email.length > 0 && !isValidEmail") ✗
+        p.error-msg(*ngIf="email.length > 0 && !isValidEmail") 올바른 이메일 형식을 입력해주세요.
+
+      .form-group
+        label.form-label 비밀번호
+        .input-wrap
+          input.form-input(type="password", placeholder="비밀번호", [(ngModel)]="password")
+
+      .form-group
+        label.form-label 비밀번호 확인
+        .input-wrap(
+          '[class.error]'="passwordConfirm.length > 0 && password !== passwordConfirm"
+        )
+          input.form-input(type="password", placeholder="비밀번호 확인", [(ngModel)]="passwordConfirm")
+          span.check-icon(*ngIf="passwordConfirm.length > 0 && password === passwordConfirm") ✓
+          span.error-icon(*ngIf="passwordConfirm.length > 0 && password !== passwordConfirm") ✗
+
+      .btn-row
+        a.btn-back('(click)'="prevStep()") ← 이전
+        .btn-right
+          span.btn-text 인증코드 발송
+          button.btn-circle(type="button", '[disabled]'="!isStep2Complete", '(click)'="sendCode()") →
+
+    // Step 3: 이메일 인증
+    .step-3(*ngIf="step === 3 && !showResult")
+      p.subtitle {{ email }} 로 인증코드를 발송했습니다.
+      .form-group
+        label.form-label 인증코드 입력
+        .code-input-wrap('(paste)'="onCodePaste($event)")
+          .code-box(*ngFor="let d of codeDigits; let i = index; trackBy: trackByIndex")
+            input.code-digit(type="text", maxlength="1", inputmode="numeric", autocomplete="off",
+              '[value]'="codeDigits[i]",
+              '(keydown)'="onCodeKeydown($event, i)")
+
+      .resend-wrap
+        button.resend-btn(type="button", '(click)'="resendCode()")
+          span 인증번호 재전송
+
+      .btn-row
+        a.btn-back('(click)'="prevStep()") ← 이전
+        .btn-right
+          span.btn-text 인증 및 생성
+          button.btn-circle(type="button", '[disabled]'="!codeComplete", '(click)'="verifyAndCreate()") →

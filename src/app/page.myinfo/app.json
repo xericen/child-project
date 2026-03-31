@@ -1,0 +1,12 @@
+{
+    "id": "page.myinfo",
+    "mode": "page",
+    "title": "/myinfo",
+    "namespace": "myinfo",
+    "category": "myinfo",
+    "viewuri": "/myinfo",
+    "preview": "",
+    "controller": "base",
+    "layout": "layout.navbar",
+    "template": "wiz-page-myinfo()"
+}

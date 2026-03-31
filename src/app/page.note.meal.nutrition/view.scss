@@ -1,0 +1,455 @@
+:host { display: block; height: 100%; }
+
+.container {
+    display: flex;
+    justify-content: center;
+    min-height: 100vh;
+    background: #eef0fb;
+    padding: 0 0 40px 0;
+}
+
+.dashboard-wrap {
+    width: 100%;
+    max-width: 400px;
+    background: #fff;
+    border-radius: 32px;
+    padding: 28px 20px 32px;
+    margin: 12px;
+    box-shadow: 0 2px 16px rgba(91, 110, 245, 0.08);
+}
+
+/* === Header === */
+.dash-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+.btn-back {
+    background: none;
+    border: none;
+    color: #5b6ef5;
+    font-size: 14px;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 8px;
+    &:hover { background: #f0f1ff; }
+}
+.dash-title {
+    flex: 1;
+    font-size: 18px;
+    font-weight: 700;
+    color: #1e1e2e;
+    text-align: center;
+}
+.btn-refresh {
+    background: none;
+    border: none;
+    font-size: 18px;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 8px;
+    &:hover { background: #f0f1ff; }
+}
+
+/* === Month Navigation === */
+.month-nav {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    margin-bottom: 12px;
+}
+.nav-arrow {
+    cursor: pointer;
+    color: #5b6ef5;
+    font-size: 16px;
+    font-weight: bold;
+    user-select: none;
+    padding: 4px 8px;
+    border-radius: 8px;
+    &:hover { background: #f0f1ff; }
+}
+.month-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #333;
+}
+
+/* === Age Selector === */
+.age-selector {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    margin-bottom: 20px;
+}
+.age-btn {
+    padding: 6px 16px;
+    border-radius: 20px;
+    border: 1.5px solid #d1d5db;
+    background: #fff;
+    font-size: 13px;
+    color: #666;
+    cursor: pointer;
+    transition: all 0.2s;
+    &.active {
+        background: #5b6ef5;
+        color: #fff;
+        border-color: #5b6ef5;
+    }
+    &:hover:not(.active) {
+        border-color: #5b6ef5;
+        color: #5b6ef5;
+    }
+}
+
+/* === Loading === */
+.loading-wrap {
+    text-align: center;
+    padding: 48px 0;
+    color: #888;
+    font-size: 14px;
+}
+.loading-spinner {
+    width: 36px;
+    height: 36px;
+    border: 3px solid #e5e7eb;
+    border-top: 3px solid #5b6ef5;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin: 0 auto 12px;
+}
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* === Empty === */
+.empty-msg {
+    text-align: center;
+    padding: 40px 0;
+    p {
+        font-size: 15px;
+        color: #666;
+        margin: 0;
+    }
+    .sub-msg {
+        font-size: 12px;
+        color: #aaa;
+        margin-top: 8px;
+    }
+}
+
+/* === Summary Cards === */
+.summary-cards {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin-bottom: 20px;
+}
+.s-card {
+    text-align: center;
+    padding: 12px 4px;
+    border-radius: 14px;
+    .s-card-num {
+        font-size: 18px;
+        font-weight: 700;
+    }
+    .s-card-label {
+        font-size: 11px;
+        margin-top: 2px;
+        opacity: 0.85;
+    }
+}
+.s-card-blue {
+    background: #eef2ff;
+    color: #4f46e5;
+}
+.s-card-green {
+    background: #ecfdf5;
+    color: #16a34a;
+}
+.s-card-orange {
+    background: #fff7ed;
+    color: #ea580c;
+}
+.s-card-red {
+    background: #fef2f2;
+    color: #dc2626;
+}
+
+/* === Section === */
+.section {
+    margin-bottom: 24px;
+}
+.section-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: #1e1e2e;
+    margin-bottom: 10px;
+}
+.section-subtitle {
+    font-size: 11px;
+    color: #999;
+    margin-top: -6px;
+    margin-bottom: 10px;
+}
+
+/* === AI Summary === */
+.ai-summary {
+    background: #f8f7ff;
+    border-radius: 12px;
+    padding: 14px;
+    font-size: 13px;
+    color: #444;
+    line-height: 1.6;
+    border-left: 3px solid #7c4dff;
+}
+.cache-info {
+    font-size: 11px;
+    color: #aaa;
+    margin-top: 6px;
+    text-align: right;
+}
+
+/* === Nutrient Bar Chart === */
+.nutrient-chart {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+.nutrient-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.nutrient-label {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    .n-name {
+        font-size: 13px;
+        font-weight: 600;
+        color: #333;
+    }
+    .n-target {
+        font-size: 11px;
+        color: #999;
+    }
+}
+.nutrient-bar-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.nutrient-bar-bg {
+    flex: 1;
+    height: 14px;
+    background: #f1f5f9;
+    border-radius: 7px;
+    overflow: hidden;
+}
+.nutrient-bar-fill {
+    height: 100%;
+    border-radius: 7px;
+    transition: width 0.6s ease;
+    min-width: 2px;
+}
+.n-pct {
+    font-size: 13px;
+    font-weight: 700;
+    min-width: 40px;
+    text-align: right;
+}
+.nutrient-detail {
+    .n-avg {
+        font-size: 11px;
+        color: #999;
+    }
+}
+
+/* === Calorie Bar Chart === */
+.calorie-chart-wrap {
+    background: #fafbff;
+    border-radius: 14px;
+    padding: 16px 12px;
+}
+.calorie-chart {
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+    height: 140px;
+    position: relative;
+    padding-bottom: 20px;
+    border-bottom: 1px solid #e5e7eb;
+}
+.calorie-target-line {
+    position: absolute;
+    left: 0;
+    right: 0;
+    border-top: 1.5px dashed #5b6ef5;
+    z-index: 1;
+    .target-label {
+        position: absolute;
+        right: 0;
+        top: -16px;
+        font-size: 10px;
+        color: #5b6ef5;
+        font-weight: 600;
+    }
+}
+.bar-group {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 0;
+}
+.bar-col {
+    width: 100%;
+    display: flex;
+    align-items: flex-end;
+    height: 120px;
+}
+.bar {
+    width: 100%;
+    border-radius: 3px 3px 0 0;
+    min-height: 2px;
+    transition: height 0.4s ease;
+}
+.bar-label {
+    font-size: 9px;
+    color: #999;
+    margin-top: 4px;
+}
+.chart-legend {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    margin-top: 10px;
+    flex-wrap: wrap;
+}
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: #888;
+}
+.legend-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+/* === Calendar Grid === */
+.cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
+}
+.cal-header {
+    text-align: center;
+    font-size: 11px;
+    color: #999;
+    font-weight: 600;
+    padding: 4px 0;
+}
+.cal-day {
+    text-align: center;
+    padding: 6px 2px;
+    border-radius: 8px;
+    min-height: 48px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1px;
+    background: #f9fafb;
+    &.empty {
+        background: transparent;
+    }
+    &.sufficient {
+        background: #ecfdf5;
+    }
+    &.deficient {
+        background: #fef2f2;
+    }
+}
+.cal-num {
+    font-size: 12px;
+    font-weight: 600;
+    color: #333;
+}
+.cal-kcal {
+    font-size: 9px;
+    color: #888;
+}
+.cal-pct {
+    font-size: 9px;
+    font-weight: 600;
+}
+
+/* === Deficient Nutrients === */
+.deficient-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.deficient-card {
+    background: #fff8f0;
+    border-radius: 12px;
+    padding: 14px;
+    border-left: 3px solid #f59e0b;
+}
+.def-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+.def-emoji {
+    font-size: 24px;
+}
+.def-info {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+.def-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: #333;
+}
+.def-pct {
+    font-size: 13px;
+    font-weight: 700;
+    color: #ea580c;
+}
+.def-target {
+    font-size: 11px;
+    color: #999;
+}
+.def-advice {
+    font-size: 13px;
+    color: #555;
+    line-height: 1.5;
+}
+
+/* === All Good === */
+.all-good {
+    text-align: center;
+    padding: 24px;
+    background: #ecfdf5;
+    border-radius: 14px;
+    .all-good-emoji {
+        font-size: 36px;
+    }
+    p {
+        font-size: 14px;
+        color: #16a34a;
+        font-weight: 600;
+        margin: 8px 0 0;
+    }
+}

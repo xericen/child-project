@@ -1,0 +1,12 @@
+{
+    "id": "page.childcheck",
+    "mode": "page",
+    "title": "childcheck",
+    "namespace": "childcheck",
+    "category": "childcheck",
+    "viewuri": "/childcheck",
+    "preview": "",
+    "controller": "base",
+    "layout": "layout.navbar",
+    "template": "wiz-page-childcheck()"
+}

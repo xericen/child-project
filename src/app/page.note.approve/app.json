@@ -1,0 +1,12 @@
+{
+    "id": "page.note.approve",
+    "mode": "page",
+    "title": "/note/approve",
+    "namespace": "note.approve",
+    "category": "general",
+    "viewuri": "/note/approve",
+    "preview": "",
+    "controller": "base",
+    "layout": "layout.navbar",
+    "template": "wiz-page-note-approve()"
+}

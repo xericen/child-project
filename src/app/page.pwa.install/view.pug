@@ -1,0 +1,136 @@
+.container
+  .login-wrap
+    .logo-icon
+
+    p.server-badge(*ngIf="serverName")
+      span.server-icon 🏫
+      | &nbsp;{{ serverName }}
+
+    h1.title
+      | child
+      br
+      | {{ showDownloadButton ? '앱 다운로드' : '앱 설치 안내' }}
+
+    //- Android Chrome: 로딩 (SW 등록 + prompt 대기 중)
+    div(*ngIf="!isStandalone && showLoading")
+      .loading-spinner
+        span.spinner ⏳
+      p.loading-text 설치 준비 중...
+
+    //- 다운로드 버튼 (prompt 대기 후 미수신 시)
+    div(*ngIf="!isStandalone && showDownloadButton")
+      .download-section
+        p.download-desc 아래 버튼을 누르면 앱이 바로 설치돼요!
+        button.btn-download(type="button",
+          '(click)'="onDownloadClick()") 📥 앱 다운로드
+
+    //- iOS Safari: 수동 설치 가이드
+    div(*ngIf="!isStandalone && !showLoading && !showDownloadButton && !showFallbackGuide && isSafari")
+      .guide-section
+        .guide-header
+          span.guide-emoji 🍎
+          span.guide-title 아이폰에 설치하는 방법
+        p.guide-desc Safari에서 간단히 설치할 수 있어요!
+        .install-steps
+          .step-item
+            span.step-num 1
+            .step-content 화면 아래 공유 버튼(□↑) 터치
+          .step-item
+            span.step-num 2
+            .step-content
+              span.step-highlight "홈 화면에 추가"
+              |  선택
+          .step-item
+            span.step-num 3
+            .step-content 오른쪽 위 "추가" 터치하면 완료!
+
+    //- iOS Chrome/기타 브라우저: Safari로 안내
+    div(*ngIf="!isStandalone && !showLoading && !showDownloadButton && !showFallbackGuide && isIOSChrome")
+      .guide-section
+        .guide-header
+          span.guide-emoji 🔄
+          span.guide-title Safari에서 열어주세요
+        p.guide-desc 아이폰은 Safari에서만 앱 설치가 가능해요.
+        .install-steps
+          .step-item
+            span.step-num 1
+            .step-content Safari 앱을 열어주세요
+          .step-item
+            span.step-num 2
+            .step-content
+              span.step-highlight child.wizide.com
+              |  입력
+          .step-item
+            span.step-num 3
+            .step-content Safari에서 설치를 따라주세요
+
+    //- Samsung Internet
+    div(*ngIf="!isStandalone && !showLoading && !showDownloadButton && !showFallbackGuide && isSamsungInternet")
+      .guide-section
+        .guide-header
+          span.guide-emoji 🌐
+          span.guide-title 삼성 인터넷에서 설치하기
+        p.guide-desc 아래 방법으로 앱처럼 사용할 수 있어요!
+        .install-steps
+          .step-item
+            span.step-num 1
+            .step-content 아래쪽 ≡ 메뉴 터치
+          .step-item
+            span.step-num 2
+            .step-content "홈 화면에 추가" 또는 "앱 설치" 선택
+          .step-item
+            span.step-num 3
+            .step-content "추가" 터치하면 완료!
+
+    //- Android Chrome: 다운로드 실패 후 수동 가이드
+    div(*ngIf="!isStandalone && showFallbackGuide && isAndroid")
+      .guide-section
+        .guide-header
+          span.guide-emoji 🤖
+          span.guide-title 수동으로 설치하기
+        p.guide-desc Chrome 메뉴에서 직접 설치할 수 있어요!
+        .install-steps
+          .step-item
+            span.step-num 1
+            .step-content Chrome 오른쪽 위 ⋮ 메뉴 터치
+          .step-item
+            span.step-num 2
+            .step-content "홈 화면에 추가" 또는 "앱 설치" 선택
+          .step-item
+            span.step-num 3
+            .step-content "설치" 터치하면 완료!
+
+    //- Android 기타 미지원 브라우저 (삼성/Chrome 아닌 경우)
+    div(*ngIf="!isStandalone && !showLoading && !showDownloadButton && !showFallbackGuide && isAndroid && !isSamsungInternet && !isChrome")
+      .guide-section
+        .guide-header
+          span.guide-emoji 🤖
+          span.guide-title 안드로이드에 설치하기
+        p.guide-desc Chrome에서 열면 바로 설치할 수 있어요!
+        .install-steps
+          .step-item
+            span.step-num 1
+            .step-content Chrome 앱을 열어주세요
+          .step-item
+            span.step-num 2
+            .step-content
+              span.step-highlight child.wizide.com
+              |  입력
+          .step-item
+            span.step-num 3
+            .step-content 다운로드 버튼을 눌러 설치해주세요
+
+    //- PC 브라우저
+    div(*ngIf="!isStandalone && !showLoading && !showDownloadButton && !showFallbackGuide && isPC")
+      .guide-section
+        .guide-header
+          span.guide-emoji 💻
+          span.guide-title PC에서 확인하셨나요?
+        p.guide-desc 스마트폰에서 사용하면 더 편리해요!
+        p.guide-desc 📱 스마트폰으로 아래 주소에 접속해보세요:
+        .url-box child.wizide.com
+
+    //- 건너뛰기 버튼
+    .skip-section(*ngIf="!isStandalone")
+      button.btn-skip(type="button",
+        '(click)'="goToNote()") 건너뛰기 →

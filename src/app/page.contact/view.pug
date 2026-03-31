@@ -1,0 +1,26 @@
+.container
+    .contact-wrap
+        .header-row
+            button.back-btn((click)="goBack()") ← 뒤로
+            .title 문의하기
+
+        p.subtitle 원장 및 담당 교사 연락처입니다.
+
+        .contact-list(*ngIf="!loading && contacts.length > 0")
+            .contact-card(*ngFor="let c of contacts")
+                .card-icon
+                    span(*ngIf="c.role === '원장'") 🏫
+                    span(*ngIf="c.role !== '원장'") 👩‍🏫
+                .card-body
+                    .card-role {{ c.role }}
+                    .card-name {{ c.name || '이름 없음' }}
+                    .card-phone(*ngIf="c.phone")
+                        a.phone-link((click)="callPhone(c.phone)") 📞 {{ c.phone }}
+                    .card-phone.no-phone(*ngIf="!c.phone") 전화번호 미등록
+
+        .empty-state(*ngIf="!loading && contacts.length === 0")
+            .empty-icon 📋
+            p 등록된 연락처가 없습니다.
+
+        .loading-state(*ngIf="loading")
+            p 연락처를 불러오는 중...

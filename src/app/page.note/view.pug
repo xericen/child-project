@@ -1,0 +1,24 @@
+.container
+  .login-wrap
+    wiz-component-header()
+    .logo-icon
+
+    //- 상단 영역
+    .top-area
+      .top-left
+        p.server-badge(*ngIf="serverName") {{ serverName }}
+        p.class-badge(*ngIf="className",
+          style="margin-top: 4px;") {{ className }}반
+
+        h1.title
+          | {{ titleName }}
+          br
+          | Note
+
+        p.subtitle 메뉴를 선택해주세요.
+
+    .menu-buttons
+      button.menu-btn(*ngFor="let btn of menuButtons",
+        '(click)'="navigate(btn.path)")
+        span.menu-icon {{ btn.icon }}
+        span.menu-label {{ btn.label }}

@@ -1,0 +1,164 @@
+// 슬롯 파일 입력 (숨김)
+input(type="file",
+  '#slotFileInput'="",
+  accept="image/*",
+  style="display:none",
+  '(change)'="onSlotFileSelected($event)")
+
+.container
+  .login-wrap
+
+    .header-row
+      span.btn-back('(click)'="goBack()") ← 뒤로
+      span
+
+    // 메뉴 모드
+    div(*ngIf="mode === 'menu'")
+      h1.title
+        | 사진 📷
+
+      p.subtitle 사진 카테고리를 선택해주세요.
+
+      .menu-buttons
+        button.menu-btn('(click)'="goPublicPhotos()")
+          span.menu-icon 📸
+          span.menu-label 공용사진
+
+        button.menu-btn('(click)'="goChildPhotos()")
+          span.menu-icon 👶
+          span.menu-label 아이사진
+
+    // 아이 목록 모드 (교사/원장)
+    div(*ngIf="mode === 'child_list'")
+      h2.list-title 👶 아이 목록
+
+      div(*ngIf="children.length === 0")
+        p.empty-msg 등록된 아이가 없습니다.
+
+      .child-list
+        .child-card(*ngFor="let child of children",
+          '(click)'="selectChild(child)")
+          .child-avatar 👶
+          .child-info
+            span.child-name {{ child.child_name }}
+            span.child-class {{ child.class_name }}
+
+    // 공용 사진 캘린더 모드
+    div(*ngIf="mode === 'public_calendar'")
+      .month-nav
+        span.nav-arrow('(click)'="prevMonth()") ◀
+        span.month-label {{ getMonthLabel() }}
+        span.nav-arrow('(click)'="nextMonth()") ▶
+
+      // 날짜 추가 (교사/원장)
+      .calendar-actions(*ngIf="canUpload()")
+        div(*ngIf="!showAddDate")
+          button.btn-add-card('(click)'="onAddDateClick()") + 날짜 추가
+        .add-date-form(*ngIf="showAddDate")
+          input.date-input(type="date",
+            [(ngModel)]="newDate")
+          .add-date-actions
+            button.btn-add-confirm('(click)'="confirmAddDate()") 추가
+            button.btn-add-cancel('(click)'="cancelAddDate()") 취소
+
+      div(*ngIf="publicDays.length === 0 && !showAddDate")
+        p.empty-msg 등록된 사진이 없습니다.
+
+      .day-card(*ngFor="let day of publicDays")
+        .day-header
+          span.day-date {{ day.date }}
+          button.day-delete(*ngIf="canUpload()",
+            '(click)'="deleteDatePhotos(day, '공용')") ✕
+        .meal-slots
+          .meal-slot(*ngFor="let slot of day.slots",
+            '[class]'="getMealSlotClass(slot.meal_type)")
+            .slot-label-bar
+              span.slot-label-text {{ slot.meal_type }}
+            .slot-body
+              .slot-photo-wrap(*ngIf="slot.photo")
+                img.slot-photo('[src]'="getSlotPhotoUrl(slot)",
+                  '(click)'="openSlotPhoto(slot)")
+                .slot-photo-actions(*ngIf="canUpload()")
+                  button.slot-change-btn('(click)'="onSlotUploadClick(day, slot, '공용')") 변경
+                  button.slot-delete-btn('(click)'="deleteSlotPhoto(slot, '공용')") 삭제
+              .slot-empty(*ngIf="!slot.photo",
+                '[class.no-hover]'="!canUpload()",
+                '(click)'="canUpload() && onSlotUploadClick(day, slot, '공용')")
+                span.slot-plus-badge(*ngIf="canUpload()") +
+                span.slot-noimage-text(*ngIf="!canUpload()") 사진 없음
+
+    // 아이 사진 캘린더 모드
+    div(*ngIf="mode === 'child_calendar'")
+      h2.list-title {{ getChildCalendarTitle() }}
+
+      .month-nav
+        span.nav-arrow('(click)'="prevChildMonth()") ◀
+        span.month-label {{ getChildMonthLabel() }}
+        span.nav-arrow('(click)'="nextChildMonth()") ▶
+
+      // 날짜 추가 (교사/원장)
+      .calendar-actions(*ngIf="canUpload()")
+        div(*ngIf="!showAddDate")
+          button.btn-add-card('(click)'="onAddDateClick()") + 날짜 추가
+        .add-date-form(*ngIf="showAddDate")
+          input.date-input(type="date",
+            [(ngModel)]="newDate")
+          .add-date-actions
+            button.btn-add-confirm('(click)'="confirmAddDate()") 추가
+            button.btn-add-cancel('(click)'="cancelAddDate()") 취소
+
+      div(*ngIf="childDays.length === 0 && !showAddDate")
+        p.empty-msg 등록된 사진이 없습니다.
+
+      .day-card(*ngFor="let day of childDays")
+        .day-header
+          span.day-date {{ day.date }}
+          button.day-delete(*ngIf="canUpload()",
+            '(click)'="deleteDatePhotos(day, '아이')") ✕
+        .meal-slots
+          .meal-slot(*ngFor="let slot of day.slots",
+            '[class]'="getMealSlotClass(slot.meal_type)")
+            .slot-label-bar
+              span.slot-label-text {{ slot.meal_type }}
+            .slot-body
+              .slot-photo-wrap(*ngIf="slot.photo")
+                img.slot-photo('[src]'="getSlotPhotoUrl(slot)",
+                  '(click)'="openSlotPhoto(slot)")
+                .slot-photo-actions(*ngIf="canUpload()")
+                  button.slot-change-btn('(click)'="onSlotUploadClick(day, slot, '아이')") 변경
+                  button.slot-delete-btn('(click)'="deleteSlotPhoto(slot, '아이')") 삭제
+              .slot-empty(*ngIf="!slot.photo",
+                '[class.no-hover]'="!canUpload()",
+                '(click)'="canUpload() && onSlotUploadClick(day, slot, '아이')")
+                span.slot-plus-badge(*ngIf="canUpload()") +
+                span.slot-noimage-text(*ngIf="!canUpload()") 사진 없음
+
+    // 사진 확대 모달
+    .photo-modal-overlay(*ngIf="expandedSlot",
+      '(click)'="closeSlotPhoto()")
+      .photo-modal-content('(click)'="$event.stopPropagation()")
+        .photo-modal-header
+          span.photo-modal-title {{ expandedSlot?.photo?.meal_type }}
+          button.photo-modal-close('(click)'="closeSlotPhoto()") ✕
+        .photo-modal-body
+          img.photo-modal-img('[src]'="getSlotPhotoUrl(expandedSlot)")
+        .comment-section
+          .comment-emoji-bar
+            button.emoji-btn(*ngFor="let e of quickEmojis",
+              '(click)'="addEmoji(e)",
+              '[disabled]'="commentLoading") {{ e }}
+          .comment-input-row
+            input.comment-input(type="text",
+              [(ngModel)]="commentText",
+              placeholder="댓글 입력 (50자 이내)",
+              maxlength="50",
+              '(keyup.enter)'="addComment()")
+            button.comment-send-btn('(click)'="addComment()",
+              '[disabled]'="commentLoading || !commentText.trim()") 전송
+          .comment-list(*ngIf="comments.length > 0")
+            .comment-item(*ngFor="let c of comments")
+              span.comment-nickname {{ c.nickname }}
+              span.comment-content {{ c.content }}
+              span.comment-time {{ c.created_at }}
+              button.comment-delete-btn(*ngIf="role !== 'parent' || c.user_id === myUserId",
+                '(click)'="deleteComment(c.id)") ✕

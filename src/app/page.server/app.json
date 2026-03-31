@@ -1,0 +1,12 @@
+{
+    "id": "page.server",
+    "mode": "page",
+    "title": "/server",
+    "namespace": "server",
+    "category": "server",
+    "viewuri": "/",
+    "preview": "",
+    "controller": "base",
+    "layout": "layout.navbar",
+    "template": "wiz-page-server()"
+}

@@ -1,0 +1,12 @@
+{
+    "mode": "page",
+    "id": "page.note",
+    "title": "note",
+    "namespace": "note",
+    "viewuri": "/note",
+    "category": "general",
+    "controller": "base",
+    "template": "wiz-page-note()",
+    "preview": "/note",
+    "layout": "layout.navbar"
+}

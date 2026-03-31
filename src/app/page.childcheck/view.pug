@@ -1,0 +1,105 @@
+.container
+  .login-wrap
+
+    .step-indicator
+      span.step-dot([class.active]="step >= 1",
+        [class.current]="step === 1")
+      span.step-dot([class.active]="step >= 2",
+        [class.current]="step === 2")
+
+    //- Step 1: 자녀 정보 확인
+    div(*ngIf="step === 1",
+      class="step-1")
+      h1.title
+        | child
+        br
+        | Check
+
+      p.subtitle 자녀 정보를 확인해주세요.
+
+      .form-group
+        label.form-label 자녀 이름
+        .input-wrap
+          input.form-input(type="text",
+            [value]="childName",
+            readonly)
+
+      .form-group
+        label.form-label 생년월일
+        .input-wrap
+          input.form-input(type="text",
+            [value]="birthDate",
+            readonly)
+
+      .form-group
+        label.form-label 나이 (만)
+        .input-wrap
+          input.form-input(type="text",
+            [value]="age + '세'",
+            readonly)
+
+      .form-group
+        label.form-label 쌍둥이 여부
+        .twin-options
+          button.twin-btn(*ngFor="let opt of twinOptions",
+            [class.active]="twinType === opt",
+            '(click)'="selectTwin(opt)") {{ opt }}
+
+      .btn-row
+        span
+        .btn-right
+          span.btn-text 다음
+          button.btn-circle('(click)'="goStep2()") →
+
+    //- Step 2: 알레르기 체크
+    div(*ngIf="step === 2",
+      class="step-2")
+      h1.title
+        | 알레르기
+        br
+        | Check
+
+      p.subtitle 알레르기 정보를 체크해주세요.
+
+      .allergy-checks
+        .allergy-item('(click)'="toggleAllergy('egg')")
+          span.allergy-icon 🥚
+          span.allergy-label 계란
+          span.allergy-check([class.checked]="allergies.egg")
+            span(*ngIf="allergies.egg") ✓
+
+        .allergy-item('(click)'="toggleAllergy('milk')")
+          span.allergy-icon 🥛
+          span.allergy-label 우유
+          span.allergy-check([class.checked]="allergies.milk")
+            span(*ngIf="allergies.milk") ✓
+
+        .allergy-item('(click)'="toggleAllergy('peanut')")
+          span.allergy-icon 🥜
+          span.allergy-label 땅콩
+          span.allergy-check([class.checked]="allergies.peanut")
+            span(*ngIf="allergies.peanut") ✓
+
+      .form-group
+        label.form-label 기타 알레르기
+        .input-wrap
+          input.form-input(type="text",
+            placeholder="기타 알레르기를 입력해주세요",
+            [(ngModel)]="otherAllergy")
+
+      .toggle-group
+        .toggle-row('(click)'="toggleSevere()")
+          span.toggle-label 중증 알레르기
+          span.toggle-switch([class.on]="isSevere")
+            span.toggle-knob
+
+        .toggle-row('(click)'="toggleSubstitute()")
+          span.toggle-label 대체식 필요
+          span.toggle-switch([class.on]="needsSubstitute")
+            span.toggle-knob
+
+      .btn-row
+        span.btn-back('(click)'="prevStep()") ← 이전
+        .btn-right
+          span.btn-text 완료
+          button.btn-circle('(click)'="saveChildcheck()") ✓

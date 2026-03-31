@@ -1,0 +1,12 @@
+{
+    "id": "page.note.photo",
+    "mode": "page",
+    "title": "/note/photo",
+    "namespace": "note.photo",
+    "category": "note.photo",
+    "viewuri": "/note/photo",
+    "preview": "",
+    "controller": "base",
+    "layout": "layout.navbar",
+    "template": "wiz-page-note-photo()"
+}

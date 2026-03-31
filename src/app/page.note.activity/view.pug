@@ -1,0 +1,47 @@
+.container
+  .login-wrap
+
+    .header-row
+      span.btn-back('(click)'="goBack()") ← 뒤로
+
+    h1.title
+      | 🎨 활동
+      br
+      | 추천
+
+    //- 로딩
+    .loading-section(*ngIf="foodsLoading")
+      .spinner
+      span 이번 주 식단을 분석하고 있어요...
+
+    //- 음식 선택 안내 
+    .guide-text(*ngIf="!foodsLoading && foods.length > 0")
+      | 이번 주에 맛있게 먹은 음식을 골라보세요! 🍽️
+
+    //- 음식 선택 그리드
+    .food-grid(*ngIf="!foodsLoading && foods.length > 0")
+      .food-card(*ngFor="let food of foods",
+        '(click)'="selectFood(food)",
+        '[class.selected]'="selectedFood?.name === food.name")
+        .food-emoji {{ food.emoji }}
+        .food-name {{ food.name }}
+
+    //- 데이터 없음 
+    .empty-section(*ngIf="!foodsLoading && foods.length === 0")
+      | 이번 주 식단 데이터가 아직 없어요 📭
+
+    //- 활동 추천 로딩
+    .loading-section(*ngIf="activityLoading")
+      .spinner
+      span {{ selectedFood?.name }}(으)로 할 수 있는 활동을 찾고 있어요...
+
+    //- 활동 추천 결과
+    .activity-section(*ngIf="!activityLoading && activities.length > 0")
+      .activity-title 🎉 {{ selectedFood?.name }} 활동 추천
+
+      .activity-card(*ngFor="let act of activities")
+        .activity-header
+          span.activity-icon {{ act.icon }}
+          span.activity-name {{ act.title }}
+          span.activity-badge('[class]'="getTypeBadgeClass(act.type)") {{ act.type }}
+        .activity-desc('[innerHTML]'="formatMarkdown(act.description)")

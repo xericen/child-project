@@ -1,0 +1,12 @@
+{
+    "id": "page.server.join",
+    "mode": "page",
+    "title": "/server/join",
+    "namespace": "server.join",
+    "category": "server.join",
+    "viewuri": "/server/join",
+    "preview": "",
+    "controller": "base",
+    "layout": "layout.navbar",
+    "template": "wiz-page-server-join()"
+}

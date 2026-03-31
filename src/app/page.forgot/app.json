@@ -1,0 +1,12 @@
+{
+    "id": "page.forgot",
+    "mode": "page",
+    "title": "forgot",
+    "namespace": "forgot",
+    "category": "forgot",
+    "viewuri": "/forgot",
+    "preview": "",
+    "controller": "base",
+    "layout": "layout.navbar",
+    "template": "wiz-page-forgot()"
+}

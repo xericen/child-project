@@ -1,0 +1,109 @@
+.container
+  .login-wrap
+    .logo-icon
+
+    h1.title
+      | child
+      br
+      | password
+
+    .step-indicator
+      .step-dot(*ngFor="let s of [1,2,3]", '[class.active]'="s <= step", '[class.current]'="s === step")
+
+    .step-1(*ngIf="step === 1")
+      p.subtitle 비밀번호를 찾기 위해 정보를 입력해주세요.
+      .form-group
+        label.form-label 이름
+        .input-wrap
+          input.form-input(
+            type="text",
+            placeholder="이름",
+            [(ngModel)]="nickname"
+          )
+          span.check-icon(*ngIf="nickname.length > 0") ✓
+
+      .form-group
+        label.form-label 이메일
+        .input-wrap
+          input.form-input(
+            type="email",
+            placeholder="youremail@address.com",
+            [(ngModel)]="email"
+          )
+          span.check-icon(*ngIf="email.length > 0") ✓
+
+      .btn-row
+        span.btn-text 인증번호 보내기
+        button.btn-circle(
+          type="button",
+          '[disabled]'="!isStep1Complete",
+          '(click)'="sendCode()"
+        ) →
+
+    .step-2(*ngIf="step === 2")
+      p.subtitle {{ email }} 로 인증코드를 발송했습니다.
+      .form-group
+        label.form-label 인증코드 입력
+        .code-input-wrap(
+          '(paste)'="onCodePaste($event)"
+        )
+          .code-box(*ngFor="let d of codeDigits; let i = index; trackBy: trackByIndex")
+            input.code-digit(
+              type="text",
+              maxlength="1",
+              inputmode="numeric",
+              autocomplete="off",
+              '[value]'="codeDigits[i]",
+              '(keydown)'="onCodeKeydown($event, i)"
+            )
+
+      .resend-wrap
+        button.resend-btn(
+          type="button",
+          '(click)'="resendCode()"
+        )
+          span 인증번호 재전송
+
+      .btn-row
+        a.btn-back('(click)'="prevStep()") ← 이전
+        .btn-right
+          span.btn-text 인증확인
+          button.btn-circle(
+            type="button",
+            '[disabled]'="!codeComplete",
+            '(click)'="verifyCode()"
+          ) →
+
+    .step-3(*ngIf="step === 3")
+      p.subtitle 새 비밀번호를 설정해주세요.
+      .form-group
+        label.form-label 새 비밀번호
+        .input-wrap
+          input.form-input(
+            type="password",
+            placeholder="새 비밀번호",
+            [(ngModel)]="newPassword",
+            '(ngModelChange)'="onPasswordChange()"
+          )
+
+      .form-group
+        label.form-label 비밀번호 확인
+        .input-wrap
+          input.form-input(
+            type="password",
+            placeholder="비밀번호 확인",
+            [(ngModel)]="confirmPassword",
+            '(ngModelChange)'="onPasswordChange()"
+          )
+        p.error-text(*ngIf="confirmPassword.length > 0 && newPassword !== confirmPassword") 비밀번호가 일치하지 않습니다.
+
+      .btn-row
+        span.btn-text 비밀번호 변경
+        button.btn-circle(
+          type="button",
+          '[disabled]'="!isStep3Complete",
+          '(click)'="resetPassword()"
+        ) →
+
+    .bottom-row
+      a.link-gray('(click)'="navigate('/main')") 로그인으로 돌아가기
