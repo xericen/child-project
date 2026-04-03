@@ -40,7 +40,28 @@ def get_dashboard():
     month = wiz.request.query("month", "")
     if not month:
         month = _now_kst().strftime("%Y-%m")
-    selected_age = wiz.request.query("age", "1~2세")
+
+    # 연령 그룹 결정: 파라미터 > 부모 자녀 나이 > 기본값
+    selected_age = wiz.request.query("age", "")
+    if not selected_age:
+        if role == "parent":
+            user_id = wiz.session.get("id")
+            if user_id:
+                try:
+                    today = _now_kst().date()
+                    children = list(Children.select().where(Children.user_id == int(user_id)))
+                    if children:
+                        child = children[0]
+                        if child.birthdate:
+                            age = today.year - child.birthdate.year
+                            if (today.month, today.day) < (child.birthdate.month, child.birthdate.day):
+                                age -= 1
+                            selected_age = "3~5세" if age >= 3 else "1~2세"
+                except Exception:
+                    pass
+        if not selected_age:
+            selected_age = "1~2세"
+
     refresh = wiz.request.query("refresh", "false") == "true"
 
     year, mon = month.split("-")
@@ -79,8 +100,17 @@ def get_dashboard():
                 'meal_type': row.meal_type or '기타',
                 'content': row.content or ''
             })
-            if row.kcal and row.kcal > 0:
-                db_daily_kcal[date_str] = row.kcal
+            # 연령에 따라 적절한 DB kcal 사용
+            kcal_val = None
+            if selected_age == "3~5세":
+                try:
+                    kcal_val = row.kcal_35
+                except Exception:
+                    pass
+            if not kcal_val or kcal_val <= 0:
+                kcal_val = row.kcal if hasattr(row, 'kcal') else None
+            if kcal_val and kcal_val > 0:
+                db_daily_kcal[date_str] = kcal_val
     except Exception as e:
         wiz.response.status(500, message=str(e))
 
@@ -111,7 +141,7 @@ def get_dashboard():
             with ThreadPoolExecutor(max_workers=8) as executor:
                 futures = {}
                 for i, (date_str, meal_type, content, day_kcal) in enumerate(all_tasks):
-                    futures[executor.submit(nutrition_api.search_meal, content)] = i
+                    futures[executor.submit(nutrition_api.search_meal, content, selected_age)] = i
                 for future in futures:
                     idx = futures[future]
                     try:

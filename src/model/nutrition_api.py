@@ -56,6 +56,7 @@ GREEN_PATTERN = re.compile(r'\{\{green:.*?\}\}')
 # 연령별 하루 에너지 필요량 (kcal)
 DAILY_ENERGY = {
     '1~2세': 1000,
+    '3~5세': 1400,
 }
 
 # 끼니별 하루 에너지 대비 비율
@@ -75,6 +76,14 @@ DAYCARE_TARGETS = {
         'carbohydrate': {'value': 73, 'label': '73g', 'unit': 'g'},
         'calcium': {'value': 250, 'label': '250mg', 'unit': 'mg'},
         'iron': {'value': 3.3, 'label': '3.3mg', 'unit': 'mg'},
+    },
+    '3~5세': {
+        'calories': {'value': 640, 'label': '640kcal', 'unit': 'kcal'},
+        'protein': {'value': 12.5, 'label': '12.5g', 'unit': 'g'},
+        'fat': {'value': 23, 'label': '23g', 'unit': 'g'},
+        'carbohydrate': {'value': 102, 'label': '102g', 'unit': 'g'},
+        'calcium': {'value': 275, 'label': '275mg', 'unit': 'mg'},
+        'iron': {'value': 4.5, 'label': '4.5mg', 'unit': 'mg'},
     },
 }
 
@@ -102,6 +111,11 @@ SERVING_WEIGHTS = {
 }
 
 # 간단한 식재료 기본 영양소 (per 100g, 식약처 식품성분표 기준)
+# ===== 연령별 메뉴 분기 =====
+# 식단표에서 연령별로 다른 메뉴가 공백 없이 이어붙어 있는 경우 (1~2세 메뉴, 3~5세 메뉴)
+AGE_MENU_PAIRS = [
+    ('백김치', '배추김치'),
+]
 BASIC_INGREDIENTS = {
     '바나나': {'name': '바나나', 'serving_size': '100g', 'category': '과일류', 'calories': 93, 'protein': 1.0, 'fat': 0.1, 'carbohydrate': 23.5, 'sugar': 15.0, 'fiber': 2.6, 'calcium': 4, 'iron': 0.3, 'phosphorus': 28, 'potassium': 380, 'sodium': 1, 'vitamin_a': 4, 'vitamin_c': 10},
     '우유': {'name': '우유', 'serving_size': '200ml', 'category': '유제품', 'calories': 65, 'protein': 3.2, 'fat': 3.7, 'carbohydrate': 4.6, 'sugar': 4.6, 'fiber': 0, 'calcium': 113, 'iron': 0, 'phosphorus': 92, 'potassium': 150, 'sodium': 41, 'vitamin_a': 40, 'vitamin_c': 1},
@@ -115,6 +129,14 @@ BASIC_INGREDIENTS = {
     '식빵': {'name': '식빵', 'serving_size': '100g', 'category': '곡류', 'calories': 274, 'protein': 9.0, 'fat': 3.6, 'carbohydrate': 50.0, 'sugar': 5.0, 'fiber': 2.5, 'calcium': 40, 'iron': 1.0, 'phosphorus': 90, 'potassium': 100, 'sodium': 500, 'vitamin_a': 0, 'vitamin_c': 0},
     '쌀밥': {'name': '쌀밥', 'serving_size': '100g', 'category': '곡류', 'calories': 149, 'protein': 2.6, 'fat': 0.3, 'carbohydrate': 34.0, 'sugar': 0, 'fiber': 0.3, 'calcium': 2, 'iron': 0.1, 'phosphorus': 28, 'potassium': 26, 'sodium': 2, 'vitamin_a': 0, 'vitamin_c': 0},
     '백미밥': {'name': '백미밥', 'serving_size': '100g', 'category': '곡류', 'calories': 149, 'protein': 2.6, 'fat': 0.3, 'carbohydrate': 34.0, 'sugar': 0, 'fiber': 0.3, 'calcium': 2, 'iron': 0.1, 'phosphorus': 28, 'potassium': 26, 'sodium': 2, 'vitamin_a': 0, 'vitamin_c': 0},
+    '배': {'name': '배', 'serving_size': '100g', 'category': '과일류', 'calories': 45, 'protein': 0.3, 'fat': 0.2, 'carbohydrate': 11.9, 'sugar': 8.4, 'fiber': 1.5, 'calcium': 4, 'iron': 0.1, 'phosphorus': 8, 'potassium': 125, 'sodium': 0, 'vitamin_a': 0, 'vitamin_c': 3},
+    '오렌지': {'name': '오렌지', 'serving_size': '100g', 'category': '과일류', 'calories': 47, 'protein': 1.0, 'fat': 0.1, 'carbohydrate': 11.0, 'sugar': 8.0, 'fiber': 2.4, 'calcium': 40, 'iron': 0.1, 'phosphorus': 20, 'potassium': 180, 'sodium': 1, 'vitamin_a': 10, 'vitamin_c': 43},
+    '키위': {'name': '키위', 'serving_size': '100g', 'category': '과일류', 'calories': 61, 'protein': 1.1, 'fat': 0.5, 'carbohydrate': 14.7, 'sugar': 9.0, 'fiber': 2.5, 'calcium': 25, 'iron': 0.3, 'phosphorus': 30, 'potassium': 290, 'sodium': 3, 'vitamin_a': 3, 'vitamin_c': 72},
+    '골드키위': {'name': '골드키위', 'serving_size': '100g', 'category': '과일류', 'calories': 63, 'protein': 1.0, 'fat': 0.3, 'carbohydrate': 15.4, 'sugar': 10.0, 'fiber': 1.4, 'calcium': 20, 'iron': 0.2, 'phosphorus': 25, 'potassium': 315, 'sodium': 3, 'vitamin_a': 3, 'vitamin_c': 105},
+    '토마토': {'name': '토마토', 'serving_size': '100g', 'category': '과일류', 'calories': 14, 'protein': 0.7, 'fat': 0.1, 'carbohydrate': 3.0, 'sugar': 2.6, 'fiber': 0.8, 'calcium': 7, 'iron': 0.3, 'phosphorus': 20, 'potassium': 210, 'sodium': 4, 'vitamin_a': 50, 'vitamin_c': 11},
+    '방울토마토': {'name': '방울토마토', 'serving_size': '100g', 'category': '과일류', 'calories': 16, 'protein': 0.8, 'fat': 0.2, 'carbohydrate': 3.3, 'sugar': 3.0, 'fiber': 1.0, 'calcium': 9, 'iron': 0.3, 'phosphorus': 22, 'potassium': 230, 'sodium': 5, 'vitamin_a': 55, 'vitamin_c': 15},
+    '한라봉': {'name': '한라봉', 'serving_size': '100g', 'category': '과일류', 'calories': 47, 'protein': 0.8, 'fat': 0.1, 'carbohydrate': 11.6, 'sugar': 9.0, 'fiber': 1.2, 'calcium': 20, 'iron': 0.1, 'phosphorus': 15, 'potassium': 165, 'sodium': 1, 'vitamin_a': 30, 'vitamin_c': 50},
+    '파인애플': {'name': '파인애플', 'serving_size': '100g', 'category': '과일류', 'calories': 46, 'protein': 0.5, 'fat': 0.1, 'carbohydrate': 11.8, 'sugar': 10.0, 'fiber': 1.0, 'calcium': 15, 'iron': 0.3, 'phosphorus': 8, 'potassium': 130, 'sodium': 1, 'vitamin_a': 3, 'vitamin_c': 15},
 }
 
 
@@ -205,10 +227,10 @@ class NutritionAPI:
             if exact:
                 return self._foods_row_to_nutrient(exact)
 
-            # 2차: LIKE 검색 (앞뒤 와일드카드)
+            # 2차: LIKE 검색 (앞뒤 와일드카드, 짧은 이름 우선)
             candidates = list(NF.select().where(
                 NF.food_name.contains(menu_name)
-            ).limit(20))
+            ).order_by(pw.fn.CHAR_LENGTH(NF.food_name)).limit(30))
 
             # 3차: 메뉴명이 검색어를 포함하는 경우 (역방향)
             if not candidates and len(menu_name) >= 2:
@@ -217,7 +239,7 @@ class NutritionAPI:
                 if base != menu_name and len(base) >= 2:
                     candidates = list(NF.select().where(
                         NF.food_name.contains(base)
-                    ).limit(20))
+                    ).order_by(pw.fn.CHAR_LENGTH(NF.food_name)).limit(30))
 
             if not candidates:
                 return None
@@ -284,6 +306,17 @@ class NutritionAPI:
 
         if '세트' in name or '식단' in name or '&' in name:
             score += 500
+
+        # 짧은 쿼리(원재료명)에서 접두사만 일치하고 구분자 없이 이어지면 페널티
+        if name.startswith(query) and len(query) <= 3:
+            remainder = name[len(query):]
+            if remainder and not re.match(r'^[_\s/]', remainder):
+                score += len(remainder) * 50
+
+        # 가공식품 카테고리 페널티 (빙과류, 과자류, 잼류 → 원재료와 다른 식품)
+        category = row.category or ''
+        if any(cat in category for cat in ['빙과', '잼', '특수의료']):
+            score += 300
 
         return score
 
@@ -531,12 +564,14 @@ class NutritionAPI:
         return result
 
     def _ai_fallback(self, food_name):
-        """AI(Gemini)를 통한 영양소 추정 fallback"""
+        """AI(Gemini)를 통한 영양소 추정 fallback — per 100g 기준으로 요청"""
         try:
             gemini = wiz.model("gemini")
-            prompt = f"""'{food_name}'의 1인분(어린이 기준) 영양 성분을 추정해주세요.
+            category_list = "밥류, 국 및 탕류, 나물·숙채류, 볶음류, 구이류, 찜류, 조림류, 튀김류, 과일류, 유제품, 빵 및 과자류, 김치류, 면 및 만두류"
+            prompt = f"""'{food_name}'의 **100g당** 영양 성분을 추정해주세요.
+category는 다음 중 가장 적합한 것을 선택: [{category_list}]
 반드시 아래 JSON 형식으로만 응답하세요. 수치는 숫자만.
-{{"name": "{food_name}", "serving_size": "1인분", "category": "추정", "calories": 0, "protein": 0, "fat": 0, "carbohydrate": 0, "sugar": 0, "fiber": 0, "calcium": 0, "iron": 0, "phosphorus": 0, "potassium": 0, "sodium": 0, "vitamin_a": 0, "vitamin_c": 0}}"""
+{{"name": "{food_name}", "serving_size": "100g", "category": "국 및 탕류", "calories": 0, "protein": 0, "fat": 0, "carbohydrate": 0, "sugar": 0, "fiber": 0, "calcium": 0, "iron": 0, "phosphorus": 0, "potassium": 0, "sodium": 0, "vitamin_a": 0, "vitamin_c": 0}}"""
             result = gemini.ask_json(prompt)
             if isinstance(result, dict) and result.get('calories', 0) > 0:
                 result['source'] = 'ai_estimate'
@@ -545,32 +580,110 @@ class NutritionAPI:
             pass
         return None
 
-    def search_meal(self, meal_content):
+    def _get_serving_ratio(self, result, age_group='1~2세'):
+        """per-100g/100mL 데이터를 어린이 1인분 제공량(g)으로 스케일링하는 비율 반환.
+        이미 1인분 기준인 데이터(AI 추정 등)는 1.0 반환."""
+        if not result:
+            return 1.0
+        serving = str(result.get('serving_size', '100g')).strip().lower()
+        # 이미 1인분 단위인 경우 스케일링 불필요
+        if '1인분' in serving or '인분' in serving:
+            return 1.0
+        # per-100g/100mL인 경우 카테고리별 어린이 제공량으로 변환
+        if '100' in serving:
+            category = result.get('category', '기타')
+            weights = SERVING_WEIGHTS.get(age_group, SERVING_WEIGHTS.get('1~2세', {}))
+            # 카테고리 매핑
+            cat_map = {
+                '밥류': '밥류', '곡류': '밥류',
+                '국 및 탕류': '국 및 탕류', '찌개 및 전골류': '국 및 탕류',
+                '나물·숙채류': '나물·숙채류', '채소류': '나물·숙채류',
+                '볶음류': '볶음류',
+                '구이류': '구이류',
+                '찜류': '찜류',
+                '조림류': '조림류',
+                '튀김류': '튀김류',
+                '과일류': '과일류',
+                '유제품': '유제품',
+                '빵 및 과자류': '빵 및 과자류',
+                '김치류': '나물·숙채류',
+                '면 및 만두류': '밥류',
+                '즉석식품류': '볶음류',
+            }
+            mapped = cat_map.get(category, '기타')
+            serving_g = weights.get(mapped, weights.get('기타', 50))
+            return serving_g / 100.0
+        return 1.0
+
+    def search_meal(self, meal_content, age_group='1~2세'):
         """식단 내용(여러 메뉴)에서 각 메뉴의 영양소를 병렬 조회하고 합산.
-        {{green:...}} 마커는 대체식으로 표시하되 영양 계산에 포함한다."""
+        연령에 따라 green 마커와 연결 메뉴를 분기 처리한다.
+        - 1~2세: green 아이템이 실제 메뉴, 직전 원본은 대체식(3~5세용)
+        - 3~5세: green 아이템이 대체식(1~2세용), 원본이 실제 메뉴
+        - 백김치배추김치 등 연결 표기: 연령에 맞는 것만 선택
+        per-100g 데이터는 어린이 1인분 제공량으로 자동 스케일링."""
         if not meal_content:
             return {'menus': [], 'total': {}, 'found_count': 0, 'total_count': 0}
 
-        lines = [l.strip() for l in meal_content.replace('\r\n', '\n').split('\n') if l.strip()]
+        # 연령별 연결 메뉴 분리 (e.g., 백김치배추김치, 백김치배추 김치 → 연령에 맞는 것만)
+        content = meal_content
+        for young_menu, old_menu in AGE_MENU_PAIRS:
+            # 메뉴명 사이의 공백을 허용하는 패턴 (e.g., '백김치배추 김치')
+            young_pat = r'\s*'.join(re.escape(ch) for ch in young_menu)
+            old_pat = r'\s*'.join(re.escape(ch) for ch in old_menu)
+            pattern = young_pat + r'\s*' + old_pat
+            replacement = young_menu if age_group == '1~2세' else old_menu
+            content = re.sub(pattern, replacement, content)
 
-        # 전처리: 메뉴명 추출 (green 포함, is_substitute 플래그 부여)
+        lines = [l.strip() for l in content.replace('\r\n', '\n').split('\n') if l.strip()]
+
+        # 연령 인식 메뉴 추출
+        # green 마커 = 1~2세 전용 메뉴, 직전 원본 = 3~5세 전용 메뉴
         menu_entries = []  # (cleaned_name, is_substitute)
-        for line in lines:
-            # green 마커 내 텍스트도 메뉴로 추출
-            green_matches = GREEN_PATTERN.findall(line)
-            for raw in green_matches:
-                gname = self._clean_menu_name(raw.replace('{{green:', '').replace('}}', ''))
-                if gname and gname not in ('/', '-'):
-                    menu_entries.append((gname, True))
+        prev_item_idx = None  # 직전 비-green 아이템의 인덱스 (green 대체 대상)
 
-            # green 마커를 제거한 나머지 = 원본 메뉴
+        for line in lines:
+            green_matches = GREEN_PATTERN.findall(line)
             line_cleaned = GREEN_PATTERN.sub('', line).strip()
-            if not line_cleaned:
-                continue
-            cleaned = self._clean_menu_name(line_cleaned)
-            if not cleaned or cleaned in ('/', '-'):
-                continue
-            menu_entries.append((cleaned, False))
+
+            if green_matches:
+                green_items = []
+                for raw in green_matches:
+                    gname = self._clean_menu_name(raw.replace('{{green:', '').replace('}}', ''))
+                    if gname and gname not in ('/', '-'):
+                        green_items.append(gname)
+
+                if green_items:
+                    if age_group == '1~2세':
+                        # 1~2세: green 아이템이 실제 메뉴
+                        for gname in green_items:
+                            menu_entries.append((gname, False))
+                        # 직전 원본(3~5세용)을 대체식으로 전환
+                        if prev_item_idx is not None:
+                            old_name, _ = menu_entries[prev_item_idx]
+                            menu_entries[prev_item_idx] = (old_name, True)
+                    else:
+                        # 3~5세: green 아이템이 대체식
+                        for gname in green_items:
+                            menu_entries.append((gname, True))
+
+                # 같은 줄의 비-green 텍스트 = 공통 메뉴
+                if line_cleaned:
+                    cleaned = self._clean_menu_name(line_cleaned)
+                    if cleaned and cleaned not in ('/', '-'):
+                        prev_item_idx = len(menu_entries)
+                        menu_entries.append((cleaned, False))
+                    else:
+                        prev_item_idx = None
+                else:
+                    prev_item_idx = None
+            else:
+                # green 없는 일반 메뉴
+                if line_cleaned:
+                    cleaned = self._clean_menu_name(line_cleaned)
+                    if cleaned and cleaned not in ('/', '-'):
+                        prev_item_idx = len(menu_entries)
+                        menu_entries.append((cleaned, False))
 
         if not menu_entries:
             return {'menus': [], 'total': {}, 'found_count': 0, 'total_count': 0}
@@ -594,18 +707,34 @@ class NutritionAPI:
 
         for cleaned, is_substitute in menu_entries:
             result = results_map.get(cleaned)
+            # per-100g → 1인분 스케일링
+            scaled_nutrition = None
+            serving_ratio = 1.0
+            if result:
+                serving_ratio = self._get_serving_ratio(result, age_group)
+                if serving_ratio != 1.0:
+                    scaled_nutrition = {}
+                    for k, v in result.items():
+                        if k in NUTRIENT_FIELDS and isinstance(v, (int, float)):
+                            scaled_nutrition[k] = round(v * serving_ratio, 2)
+                        else:
+                            scaled_nutrition[k] = v
+                    scaled_nutrition['serving_ratio'] = serving_ratio
+                else:
+                    scaled_nutrition = result
+
             entry = {
                 'name': cleaned,
                 'found': result is not None,
-                'nutrition': result,
+                'nutrition': scaled_nutrition,
                 'is_substitute': is_substitute
             }
             menus.append(entry)
 
-            if result:
+            if scaled_nutrition:
                 found_count += 1
                 for key in NUTRIENT_FIELDS:
-                    total[key] += result.get(key, 0.0)
+                    total[key] += scaled_nutrition.get(key, 0.0)
 
         for key in total:
             total[key] = round(total[key], 1)

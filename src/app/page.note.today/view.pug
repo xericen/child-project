@@ -1,115 +1,121 @@
 .container
   .login-wrap
 
-    .header-row
-      span.btn-back('(click)'="goBack()") ← 뒤로
-      button.btn-dinner(*ngIf="role === 'parent'",
-        '(click)'="recommendDinner()",
-        '[disabled]'="dinnerLoading") 🍽️ 저녁추천
+    //- 로딩
+    div(*ngIf="pageLoading", style="display:flex;justify-content:center;align-items:center;min-height:200px;")
+      p(style="color:#222 !important;font-size:14px;") 식단 불러오는 중...
 
-    h1.title
-      | 오늘의
-      br
-      | 식단 🍱
+    //- 본문
+    div(*ngIf="!pageLoading")
+      .header-row
+        span.btn-back('(click)'="goBack()") ← 뒤로
+        button.btn-dinner(*ngIf="role === 'parent'",
+          '(click)'="recommendDinner()",
+          '[disabled]'="dinnerLoading") 🍽️ 저녁추천
 
-    .menu-card('[class.allergy-danger]'="role === 'parent' && hasAllergyWarning('오전간식')")
-      .card-label 🍪 오전간식
-      .card-content('[innerHTML]'="formatMealContent(morningSnack)")
-      .allergy-warn(*ngIf="role === 'parent' && hasAllergyWarning('오전간식')")
-        | ⚠️ 알레르기 주의: {{ getAllergyText('오전간식') }}
+      h1.title
+        | 오늘의
+        br
+        | 식단 🍱
 
-    .menu-card('[class.allergy-danger]'="role === 'parent' && hasAllergyWarning('점심')")
-      .card-label 🍚 점심 식단
-      .card-content('[innerHTML]'="formatMealContent(lunchMenu)")
-      .allergy-warn(*ngIf="role === 'parent' && hasAllergyWarning('점심')")
-        | ⚠️ 알레르기 주의: {{ getAllergyText('점심') }}
+      .menu-card('[class.allergy-danger]'="role === 'parent' && hasAllergyWarning('오전간식')")
+        .card-label 🍪 오전간식
+        .card-content('[innerHTML]'="formatMealContent(morningSnack)")
+        .allergy-warn(*ngIf="role === 'parent' && hasAllergyWarning('오전간식')")
+          | ⚠️ 알레르기 주의: {{ getAllergyText('오전간식') }}
 
-    .menu-card('[class.allergy-danger]'="role === 'parent' && hasAllergyWarning('오후간식')")
-      .card-label 🍪 오후간식
-      .card-content('[innerHTML]'="formatMealContent(afternoonSnack)")
-      .allergy-warn(*ngIf="role === 'parent' && hasAllergyWarning('오후간식')")
-        | ⚠️ 알레르기 주의: {{ getAllergyText('오후간식') }}
+      .menu-card('[class.allergy-danger]'="role === 'parent' && hasAllergyWarning('점심')")
+        .card-label 🍚 점심 식단
+        .card-content('[innerHTML]'="formatMealContent(lunchMenu)")
+        .allergy-warn(*ngIf="role === 'parent' && hasAllergyWarning('점심')")
+          | ⚠️ 알레르기 주의: {{ getAllergyText('점심') }}
 
-    //- 저녁 추천 결과 (부모용) - 3단계 분석
-    .dinner-section(*ngIf="showDinner")
-      .dinner-title 🍽️ 영양 분석 & 저녁 추천
+      .menu-card('[class.allergy-danger]'="role === 'parent' && hasAllergyWarning('오후간식')")
+        .card-label 🍪 오후간식
+        .card-content('[innerHTML]'="formatMealContent(afternoonSnack)")
+        .allergy-warn(*ngIf="role === 'parent' && hasAllergyWarning('오후간식')")
+          | ⚠️ 알레르기 주의: {{ getAllergyText('오후간식') }}
 
-      .dinner-loading(*ngIf="dinnerLoading")
-        .spinner
-        span 식단 영양소를 분석하고 있어요...
+      //- 저녁 추천 결과 (부모용) - 3단계 분석
+      .dinner-section(*ngIf="showDinner")
+        .dinner-title 🍽️ 영양 분석 & 저녁 추천
 
-      .dinner-error(*ngIf="!dinnerLoading && dinnerError")
-        | {{ dinnerError }}
+        .dinner-loading(*ngIf="dinnerLoading")
+          .spinner
+          span 식단 영양소를 분석하고 있어요...
 
-      //- 3단계 분석 결과
-      div(*ngIf="!dinnerLoading && analysis")
+        .dinner-error(*ngIf="!dinnerLoading && dinnerError")
+          | {{ dinnerError }}
 
-        //- Stage 1: 영양소 수치 (서버 계산)
-        .stage-card
-          .stage-header
-            span.stage-num 1
-            span.stage-title 오늘 섭취 영양소
-            span.stage-badge 식약처 DB 기반
-          .stage-body
-            .meal-analysis(*ngFor="let meal of analysis.stage1?.meals || []")
-              .meal-type-label {{ meal.meal_type }}
-              .meal-items
-                .meal-item(*ngFor="let item of meal.items || []")
-                  span.item-name {{ item.name }}
-                  span.item-cal {{ item.calories }}kcal
-            .total-row(*ngIf="analysis.stage1?.total")
-              span.total-label 총 섭취량
-              .total-nutrients
-                span.nutrient-tag(*ngFor="let key of nutrientKeys()")
-                  | {{ getNutrientLabel(key) }}
-                  strong  {{ analysis.stage1.total[key] }}{{ getNutrientUnit(key) }}
+        //- 3단계 분석 결과
+        div(*ngIf="!dinnerLoading && analysis")
 
-        //- Stage 2: 어린이집 제공 목표 대비 (서버 계산)
-        .stage-card
-          .stage-header
-            span.stage-num 2
-            span.stage-title 어린이집 제공 목표 대비
-            span.stage-badge 1-2세 기준
-          .stage-body
-            .child-info(*ngIf="analysis.stage2?.child_name")
-              span.child-badge 👶 {{ analysis.stage2.child_name }} (만 {{ analysis.stage2.age }}세)
-            .deficit-list
-              .deficit-row(*ngFor="let key of nutrientKeys()",
-                '[class.status-low]'="getNutrientStatus(key) === '부족'",
-                '[class.status-over]'="getNutrientStatus(key) === '초과'",
-                '[class.status-ok]'="getNutrientStatus(key) === '적정'")
-                .deficit-label {{ getNutrientLabel(key) }}
-                .deficit-bar-wrap
-                  .deficit-bar('[style.width.%]'="getDeficitPercent(analysis.stage2?.deficit, analysis.stage2?.recommended, key)",
-                    '[class.full]'="getDeficitPercent(analysis.stage2?.deficit, analysis.stage2?.recommended, key) >= 100",
-                    '[class.low]'="getDeficitPercent(analysis.stage2?.deficit, analysis.stage2?.recommended, key) < 50")
-                .deficit-values
-                  span.consumed {{ analysis.stage2?.consumed?.[key] || 0 }}
-                  span.separator /
-                  span.recommended {{ analysis.stage2?.recommended?.[key] || 0 }}
-                  span.unit {{ getNutrientUnit(key) }}
-                  span.status-badge(*ngIf="getNutrientStatus(key) === '부족'",
-                    class="badge-low") 부족
-                  span.status-badge(*ngIf="getNutrientStatus(key) === '초과'",
-                    class="badge-over") +{{ analysis.stage2?.surplus?.[key] || 0 }}
-                  span.status-badge(*ngIf="getNutrientStatus(key) === '적정'",
-                    class="badge-ok") 적정
+          //- Stage 1: 영양소 수치 (서버 계산)
+          .stage-card
+            .stage-header
+              span.stage-num 1
+              span.stage-title 오늘 섭취 영양소
+              span.stage-badge 식약처 DB 기반
+            .stage-body
+              .meal-analysis(*ngFor="let meal of analysis.stage1?.meals || []")
+                .meal-type-label {{ meal.meal_type }}
+                .meal-items
+                  .meal-item(*ngFor="let item of meal.items || []")
+                    span.item-name {{ item.name }}
+                    span.item-cal {{ item.calories }}kcal
+              .total-row(*ngIf="analysis.stage1?.total")
+                span.total-label 총 섭취량
+                .total-nutrients
+                  span.nutrient-tag(*ngFor="let key of nutrientKeys()")
+                    | {{ getNutrientLabel(key) }}
+                    strong  {{ analysis.stage1.total[key] }}{{ getNutrientUnit(key) }}
 
-        //- Stage 3: 저녁 메뉴 추천 (AI)
-        .stage-card
-          .stage-header
-            span.stage-num 3
-            span.stage-title 저녁 메뉴 추천
-            span.stage-badge AI 추천
-          .stage-body
-            .recommend-card(*ngFor="let menu of analysis.stage3?.menus || []")
-              .recommend-name 🍳 {{ menu.name }}
-              .recommend-desc(*ngIf="menu.description") {{ menu.description }}
-              .recommend-nutrients
-                ng-container(*ngFor="let key of nutrientKeys()")
-                  span.nutrient-mini(*ngIf="menu.nutrients?.[key]")
-                    | {{ getNutrientLabel(key) }} {{ menu.nutrients[key] }}{{ getNutrientUnit(key) }}
-              .recommend-reason(*ngIf="menu.reason") 💡 {{ menu.reason }}
-            .tip-box(*ngIf="analysis.stage3?.tip")
-              span.tip-icon 👨‍🍳
-              span.tip-text {{ analysis.stage3.tip }}
+          //- Stage 2: 어린이집 제공 목표 대비 (서버 계산)
+          .stage-card
+            .stage-header
+              span.stage-num 2
+              span.stage-title 어린이집 제공 목표 대비
+              span.stage-badge {{ analysis.stage2?.age >= 3 ? '3~5세 기준' : '1~2세 기준' }}
+            .stage-body
+              .child-info(*ngIf="analysis.stage2?.child_name")
+                span.child-badge 👶 {{ analysis.stage2.child_name }} (만 {{ analysis.stage2.age }}세)
+              .deficit-list
+                .deficit-row(*ngFor="let key of nutrientKeys()",
+                  '[class.status-low]'="getNutrientStatus(key) === '부족'",
+                  '[class.status-over]'="getNutrientStatus(key) === '초과'",
+                  '[class.status-ok]'="getNutrientStatus(key) === '적정'")
+                  .deficit-label {{ getNutrientLabel(key) }}
+                  .deficit-bar-wrap
+                    .deficit-bar('[style.width.%]'="getDeficitPercent(analysis.stage2?.deficit, analysis.stage2?.recommended, key)",
+                      '[class.full]'="getDeficitPercent(analysis.stage2?.deficit, analysis.stage2?.recommended, key) >= 100",
+                      '[class.low]'="getDeficitPercent(analysis.stage2?.deficit, analysis.stage2?.recommended, key) < 50")
+                  .deficit-values
+                    span.consumed {{ analysis.stage2?.consumed?.[key] || 0 }}
+                    span.separator /
+                    span.recommended {{ analysis.stage2?.recommended?.[key] || 0 }}
+                    span.unit {{ getNutrientUnit(key) }}
+                    span.status-badge(*ngIf="getNutrientStatus(key) === '부족'",
+                      class="badge-low") 부족
+                    span.status-badge(*ngIf="getNutrientStatus(key) === '초과'",
+                      class="badge-over") +{{ analysis.stage2?.surplus?.[key] || 0 }}
+                    span.status-badge(*ngIf="getNutrientStatus(key) === '적정'",
+                      class="badge-ok") 적정
+
+          //- Stage 3: 저녁 메뉴 추천 (AI)
+          .stage-card
+            .stage-header
+              span.stage-num 3
+              span.stage-title 저녁 메뉴 추천
+              span.stage-badge AI 추천
+            .stage-body
+              .recommend-card(*ngFor="let menu of analysis.stage3?.menus || []")
+                .recommend-name 🍳 {{ menu.name }}
+                .recommend-desc(*ngIf="menu.description") {{ menu.description }}
+                .recommend-nutrients
+                  ng-container(*ngFor="let key of nutrientKeys()")
+                    span.nutrient-mini(*ngIf="menu.nutrients?.[key]")
+                      | {{ getNutrientLabel(key) }} {{ menu.nutrients[key] }}{{ getNutrientUnit(key) }}
+                .recommend-reason(*ngIf="menu.reason") 💡 {{ menu.reason }}
+              .tip-box(*ngIf="analysis.stage3?.tip")
+                span.tip-icon 👨‍🍳
+                span.tip-text {{ analysis.stage3.tip }}

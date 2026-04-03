@@ -26,11 +26,25 @@ ALLERGY_TYPE_TO_NUMBERS = {
     '잣': [19], '난류': [1],
 }
 
-# 연령별 어린이집 제공분 목표 영양소 (점심 + 간식 2회)
-DAYCARE_TARGETS = {
-    '1~2': {'calories': 420, 'protein': 9.3, 'fat': 14, 'carbs': 61, 'calcium': 210, 'iron': 2.8},
-}
-DAYCARE_TARGET = DAYCARE_TARGETS['1~2']  # 기본값
+# 연령별 어린이집 제공분 목표 영양소 — nutrition_api.py 공유 상수에서 변환
+def _build_daycare_targets():
+    """nutrition_api.py의 DAYCARE_TARGETS(nested)를 flat dict로 변환"""
+    _api = wiz.model("nutrition_api")
+    _src = _api.DAYCARE_TARGETS
+    # nutrition_api 키(carbohydrate) → api.py 표시 키(carbs) 변환
+    key_map = {'carbohydrate': 'carbs'}
+    targets = {}
+    for age_label, nutrients in _src.items():
+        age_key = age_label.replace('세', '')  # '1~2세' → '1~2'
+        flat = {}
+        for k, v in nutrients.items():
+            display_key = key_map.get(k, k)
+            flat[display_key] = v['value']
+        targets[age_key] = flat
+    return targets
+
+DAYCARE_TARGETS = _build_daycare_targets()
+DAYCARE_TARGET = DAYCARE_TARGETS['1~2']  # 키 목록용 기본값
 
 import re
 
@@ -55,28 +69,87 @@ def _keyword_in_content(keyword, content):
             return True
     return False
 
+_ai_allergy_cache = {}
+
 def _ai_map_other_allergy(other_detail):
-    """기타 알레르기 키워드가 표준 19종 중 어디에 해당하는지 AI로 분석."""
+    """기타 알레르기 키워드가 표준 19종 중 어디에 해당하는지 AI로 분석 (캐시 적용)."""
     if not other_detail or not other_detail.strip():
         return []
+    key = other_detail.strip()
+    if key in _ai_allergy_cache:
+        return _ai_allergy_cache[key]
     allergy_list = ", ".join([f"{v}({k}번)" for k, v in ALLERGY_MAP.items()])
     try:
         gemini = wiz.model("gemini")
-        prompt = f"""아이의 알레르기가 "{other_detail}"입니다.
+        prompt = f"""아이의 알레르기가 "{key}"입니다.
 표준 19종 알레르기: {allergy_list}
 이 알레르기가 표준 19종 중 어떤 항목에 해당하는지 번호만 반환해주세요.
 해당하는 게 없으면 빈 배열을 반환하세요.
 JSON 형식: {{"numbers": [10]}}"""
         result = gemini.ask_json(prompt, system_instruction="알레르기 전문가입니다. JSON만 응답하세요.")
         if isinstance(result, dict) and 'numbers' in result:
-            return [int(n) for n in result['numbers'] if isinstance(n, (int, float)) and 1 <= int(n) <= 19]
+            nums = [int(n) for n in result['numbers'] if isinstance(n, (int, float)) and 1 <= int(n) <= 19]
+            _ai_allergy_cache[key] = nums
+            return nums
     except Exception:
         pass
+    _ai_allergy_cache[key] = []
     return []
 
 def _get_daycare_target(age):
     """자녀 나이 기반 DAYCARE_TARGET 반환"""
+    if age >= 3:
+        return DAYCARE_TARGETS['3~5']
     return DAYCARE_TARGETS['1~2']
+
+# 연령별 연결 메뉴 쌍 (1~2세 메뉴, 3~5세 메뉴) — nutrition_api.AGE_MENU_PAIRS와 동기화
+_AGE_MENU_PAIRS = [('백김치', '배추김치')]
+_GREEN_RE = re.compile(r'\{\{green:.*?\}\}')
+
+def _adapt_content_for_age(content, age_group):
+    """식단 content를 해당 연령의 메뉴만 표시하도록 변환.
+    - 연결 메뉴(백김치배추김치) → 연령에 맞는 것만
+    - green 마커 → 1~2세는 green이 실제메뉴, 3~5세는 원본이 실제메뉴"""
+    if not content:
+        return content
+    # 1. 연결 메뉴 분리
+    for young, old in _AGE_MENU_PAIRS:
+        young_pat = r'\s*'.join(re.escape(ch) for ch in young)
+        old_pat = r'\s*'.join(re.escape(ch) for ch in old)
+        pattern = young_pat + r'\s*' + old_pat
+        content = re.sub(pattern, young if age_group == '1~2세' else old, content)
+    # 2. green 마커 처리
+    lines = content.split('\n')
+    result = []
+    if age_group == '1~2세':
+        for line in lines:
+            if '{{green:' in line:
+                # green 텍스트 추출
+                green_texts = [m.group(1) for m in re.finditer(r'\{\{green:(.*?)\}\}', line)]
+                remainder = _GREEN_RE.sub('', line).strip()
+                # 직전 항목(3~5세용) 제거
+                if result:
+                    result.pop()
+                # green 텍스트 추가
+                for gt in green_texts:
+                    gt = gt.strip()
+                    if gt and gt not in ('/', '-'):
+                        result.append(gt)
+                # 같은줄 공통 텍스트 추가
+                if remainder:
+                    result.append(remainder)
+            else:
+                result.append(line)
+    else:
+        for line in lines:
+            if '{{green:' in line:
+                remainder = _GREEN_RE.sub('', line).strip()
+                if remainder:
+                    result.append(remainder)
+                # green 아이템 제거 (3~5세는 원본 사용)
+            else:
+                result.append(line)
+    return '\n'.join(result)
 
 NUTRIENT_LABEL_MAP = {
     'calories': ('칼로리', 'kcal'),
@@ -123,9 +196,13 @@ def _get_today_meals(server_id):
                     pass
             kcal_val = None
             protein_val = None
+            kcal_35_val = None
+            protein_35_val = None
             try:
                 kcal_val = row.kcal
                 protein_val = row.protein
+                kcal_35_val = row.kcal_35
+                protein_35_val = row.protein_35
             except Exception:
                 pass
             meals.append({
@@ -134,7 +211,9 @@ def _get_today_meals(server_id):
                 'allergy_numbers': allergy_nums,
                 'dish_allergies': json.loads(row.dish_allergies) if row.dish_allergies else {},
                 'kcal': kcal_val,
-                'protein': protein_val
+                'protein': protein_val,
+                'kcal_35': kcal_35_val,
+                'protein_35': protein_35_val
             })
     except Exception:
         pass
@@ -243,36 +322,46 @@ def get_today_menu():
             meal_content_map['오후간식'] = m['content']
             meal_dish_allergy_map['오후간식'] = m.get('dish_allergies', {})
 
-    # 자녀 알레르기 매칭 (모든 역할)
+    # 자녀 알레르기 매칭 (모든 역할) — 단일 패스로 번호+키워드 수집
     allergy_warnings = {}
     child_allergy_nums = set()
+    other_keywords = []
+
+    def _collect_allergy_data(allergy_rows):
+        """ChildAllergies 행에서 번호와 기타 키워드를 한 번에 수집"""
+        for ca in allergy_rows:
+            if ca.allergy_type == '기타' and ca.other_detail:
+                detail = ca.other_detail.strip()
+                # 기타 키워드 수집
+                for kw in detail.replace('/', ',').split(','):
+                    kw = kw.strip()
+                    if kw:
+                        other_keywords.append(kw)
+                # 번호 매핑
+                found = ALLERGY_TYPE_TO_NUMBERS.get(detail, [])
+                if found:
+                    child_allergy_nums.update(found)
+                else:
+                    for part in re.split(r'[,\s/]+', detail):
+                        part = part.strip()
+                        if part:
+                            nums = ALLERGY_TYPE_TO_NUMBERS.get(part, [])
+                            if nums:
+                                child_allergy_nums.update(nums)
+                            else:
+                                ai_nums = _ai_map_other_allergy(part)
+                                child_allergy_nums.update(ai_nums)
+            else:
+                nums = ALLERGY_TYPE_TO_NUMBERS.get(ca.allergy_type, [])
+                child_allergy_nums.update(nums)
 
     if role == 'parent':
         user_id = wiz.session.get("id")
         if user_id:
             try:
-                children_list = Children.select().where(Children.user_id == int(user_id))
-                child_ids = [c.id for c in children_list]
+                child_ids = [c.id for c in Children.select().where(Children.user_id == int(user_id))]
                 if child_ids:
-                    for ca in ChildAllergies.select().where(ChildAllergies.child_id.in_(child_ids)):
-                        if ca.allergy_type == '기타' and ca.other_detail:
-                            detail = ca.other_detail.strip()
-                            found = ALLERGY_TYPE_TO_NUMBERS.get(detail, [])
-                            if found:
-                                child_allergy_nums.update(found)
-                            else:
-                                for part in re.split(r'[,\s/]+', detail):
-                                    part = part.strip()
-                                    if part:
-                                        nums = ALLERGY_TYPE_TO_NUMBERS.get(part, [])
-                                        if nums:
-                                            child_allergy_nums.update(nums)
-                                        else:
-                                            ai_nums = _ai_map_other_allergy(part)
-                                            child_allergy_nums.update(ai_nums)
-                        else:
-                            nums = ALLERGY_TYPE_TO_NUMBERS.get(ca.allergy_type, [])
-                            child_allergy_nums.update(nums)
+                    _collect_allergy_data(ChildAllergies.select().where(ChildAllergies.child_id.in_(child_ids)))
             except Exception:
                 pass
     elif role in ('teacher', 'director'):
@@ -281,47 +370,11 @@ def get_today_menu():
                 (ServerMembers.server_id == server_id) & (ServerMembers.role == "parent")
             )]
             if parent_ids:
-                all_children = list(Children.select().where(Children.user_id.in_(parent_ids)))
-                child_ids = [c.id for c in all_children]
+                child_ids = [c.id for c in Children.select().where(Children.user_id.in_(parent_ids))]
                 if child_ids:
-                    for ca in ChildAllergies.select().where(ChildAllergies.child_id.in_(child_ids)):
-                        if ca.allergy_type == '기타' and ca.other_detail:
-                            detail = ca.other_detail.strip()
-                            found = ALLERGY_TYPE_TO_NUMBERS.get(detail, [])
-                            if found:
-                                child_allergy_nums.update(found)
-                            else:
-                                for part in re.split(r'[,\s/]+', detail):
-                                    part = part.strip()
-                                    if part:
-                                        nums = ALLERGY_TYPE_TO_NUMBERS.get(part, [])
-                                        if nums:
-                                            child_allergy_nums.update(nums)
-                                        else:
-                                            ai_nums = _ai_map_other_allergy(part)
-                                            child_allergy_nums.update(ai_nums)
-                        else:
-                            nums = ALLERGY_TYPE_TO_NUMBERS.get(ca.allergy_type, [])
-                            child_allergy_nums.update(nums)
+                    _collect_allergy_data(ChildAllergies.select().where(ChildAllergies.child_id.in_(child_ids)))
         except Exception:
             pass
-
-    # 기타 알레르기 키워드 수집
-    other_keywords = []
-    if role == 'parent':
-        user_id_val = wiz.session.get("id")
-        if user_id_val:
-            try:
-                children_list2 = Children.select().where(Children.user_id == int(user_id_val))
-                for c in children_list2:
-                    for ca in ChildAllergies.select().where(ChildAllergies.child_id == c.id):
-                        if ca.allergy_type == '기타' and ca.other_detail:
-                            for kw in ca.other_detail.strip().replace('/', ',').split(','):
-                                kw = kw.strip()
-                                if kw:
-                                    other_keywords.append(kw)
-            except Exception:
-                pass
 
     if child_allergy_nums or other_keywords:
         for meal_type in meal_allergy:
@@ -352,12 +405,28 @@ def get_today_menu():
             if matched_names:
                 allergy_warnings[meal_type] = sorted(matched_names)
 
+    # 학부모: 자녀 연령에 맞게 식단 content 변환 (green 분기 + 연결 메뉴)
+    if role == 'parent':
+        user_id = wiz.session.get("id")
+        age_group = '1~2세'
+        if user_id:
+            children_info = _get_my_children_info(user_id)
+            if children_info:
+                child_age = children_info[0]['age']
+                age_group = '3~5세' if child_age >= 3 else '1~2세'
+        morning_snack = _adapt_content_for_age(morning_snack, age_group)
+        lunch = _adapt_content_for_age(lunch, age_group)
+        afternoon_snack = _adapt_content_for_age(afternoon_snack, age_group)
+
     wiz.response.status(200, role=role,
         morning_snack=morning_snack, lunch=lunch, afternoon_snack=afternoon_snack,
         meal_allergy=meal_allergy, allergy_map=ALLERGY_MAP,
         allergy_warnings=allergy_warnings)
 
 def recommend_dinner():
+    _recommend_dinner_impl()
+
+def _recommend_dinner_impl():
     role = wiz.session.get("role")
     if not role:
         wiz.response.status(401, message="로그인이 필요합니다.")
@@ -370,6 +439,19 @@ def recommend_dinner():
 
     nutrition_api = wiz.model("nutrition_api")
 
+    # 자녀 정보 조회 (나이에 따라 kcal vs kcal_35 선택에 필요)
+    children_info = []
+    child_name = ''
+    child_age = 0
+    if role == "parent" and user_id:
+        children_info = _get_my_children_info(user_id)
+    if children_info:
+        child_name = children_info[0]['name']
+        child_age = children_info[0]['age']
+
+    print(f"[recommend_dinner] 자녀: {child_name}, 나이: {child_age}세, 연령그룹: {'3~5세' if child_age >= 3 else '1~2세'}")
+    print(f"[recommend_dinner] 오늘 식단 {len(meals)}끼: {[m['meal_type'] for m in meals]}")
+
     # ── 전처리: content를 그대로 전달 (green 마커는 search_meal에서 처리) ──
     from concurrent.futures import ThreadPoolExecutor
 
@@ -377,10 +459,11 @@ def recommend_dinner():
     for m in meals:
         meal_cleaned[m['meal_type']] = m['content'] or ''
 
-    # 3끼 식단을 병렬 조회
+    # 3끼 식단을 병렬 조회 (아이 연령 기반 1인분 제공량 적용)
+    age_group = '3~5세' if child_age >= 3 else '1~2세'
     meal_results = {}
     with ThreadPoolExecutor(max_workers=3) as executor:
-        futures = {executor.submit(nutrition_api.search_meal, meal_cleaned[m['meal_type']]): m['meal_type'] for m in meals}
+        futures = {executor.submit(nutrition_api.search_meal, meal_cleaned[m['meal_type']], age_group): m['meal_type'] for m in meals}
         for future in futures:
             meal_type = futures[future]
             try:
@@ -396,13 +479,79 @@ def recommend_dinner():
     stage2_meals = []
     grand_total = {k: 0.0 for k in DAYCARE_TARGET}
 
+    # DB의 kcal은 점심 행에만 저장되어 있지만 실제로는 일일 합계(점심+간식)
+    # 아이 나이에 따라 1~2세(kcal) 또는 3~5세(kcal_35) 선택
+    daily_total_kcal = None
+    daily_total_protein = None
     for m in meals:
-        db_kcal = m.get('kcal')
-        db_protein = m.get('protein')
+        if child_age >= 3:
+            if m.get('kcal_35'):
+                daily_total_kcal = m['kcal_35']
+            if m.get('protein_35'):
+                daily_total_protein = m['protein_35']
+        else:
+            if m.get('kcal'):
+                daily_total_kcal = m['kcal']
+            if m.get('protein'):
+                daily_total_protein = m['protein']
+
+    print(f"[recommend_dinner] DB열량 선택: daily_total_kcal={daily_total_kcal}, daily_total_protein={daily_total_protein} ({'kcal_35/protein_35' if child_age >= 3 else 'kcal/protein'})")
+
+    # 끼니별 에너지 비율 (합이 1.0이 되도록 정규화)
+    MEAL_RATIO = {'오전간식': 0.10, '점심': 0.35, '오후간식': 0.10}
+    ratio_sum = sum(MEAL_RATIO.get(m['meal_type'], 0.10) for m in meals)
+    meal_kcal_map = {}
+    meal_protein_map = {}
+    if daily_total_kcal and daily_total_kcal > 0:
+        for m in meals:
+            r = MEAL_RATIO.get(m['meal_type'], 0.10) / ratio_sum
+            meal_kcal_map[m['meal_type']] = round(daily_total_kcal * r)
+            if daily_total_protein:
+                meal_protein_map[m['meal_type']] = round(daily_total_protein * r, 1)
+
+    print(f"[recommend_dinner] 끼니별 DB열량 배분: {meal_kcal_map}")
+    print(f"[recommend_dinner] 끼니별 DB단백질 배분: {meal_protein_map}")
+
+    for m in meals:
+        db_kcal = meal_kcal_map.get(m['meal_type'])
+        db_protein = meal_protein_map.get(m['meal_type'])
 
         meal_result = meal_results[m['meal_type']]
-        print(f"[Stage1] {m['meal_type']}: 메뉴 {meal_result['total_count']}개 검색, 성공 {meal_result['found_count']}개, API합산={meal_result['total'].get('calories', 0)}kcal, DB열량={db_kcal}")
 
+        # 원본 아이템만의 API 합산 (substitute 제외) — DB kcal은 원본 메뉴 기준이므로
+        NUTRIENT_KEYS = ['calories', 'protein', 'fat', 'carbohydrate', 'calcium', 'iron', 'sugar', 'fiber', 'phosphorus', 'potassium', 'sodium', 'vitamin_a', 'vitamin_c']
+        original_api_cal = 0.0
+        original_api_total = {k: 0.0 for k in NUTRIENT_KEYS}
+        for menu in meal_result['menus']:
+            if not menu.get('is_substitute', False) and menu['found'] and menu['nutrition']:
+                for nk in NUTRIENT_KEYS:
+                    v = menu['nutrition'].get(nk)
+                    if v is not None:
+                        try:
+                            original_api_total[nk] += float(v)
+                        except (ValueError, TypeError):
+                            pass
+        original_api_cal = original_api_total.get('calories', 0)
+
+        print(f"[Stage1] {m['meal_type']}: 메뉴 {meal_result['total_count']}개 검색, 성공 {meal_result['found_count']}개, 원본API합산={round(original_api_cal,1)}kcal, DB열량={db_kcal}")
+
+        # DB 열량 기반 스케일링 비율 계산 — 원본 아이템 기준
+        if db_kcal and db_kcal > 0 and original_api_cal > 0:
+            ratio = db_kcal / original_api_cal
+            print(f"[스케일링] {m['meal_type']}: 원본API={round(original_api_cal,1)}kcal → DB={db_kcal}kcal, ratio={ratio:.4f}")
+
+            # protein 별도 ratio (DB protein이 있으면)
+            original_api_protein = original_api_total.get('protein', 0)
+            if db_protein and db_protein > 0 and original_api_protein > 0:
+                protein_ratio = db_protein / original_api_protein
+            else:
+                protein_ratio = ratio
+        else:
+            ratio = 1.0
+            protein_ratio = 1.0
+            print(f"[스케일링] {m['meal_type']} 미적용: 원본API={round(original_api_cal,1)}kcal, DB_kcal={db_kcal}")
+
+        # Stage 1: 원본 아이템만 DB 열량에 맞춰 스케일링, substitute는 참고용
         raw_items = []
         for menu in meal_result['menus']:
             item_data = {
@@ -411,76 +560,61 @@ def recommend_dinner():
                 'is_substitute': menu.get('is_substitute', False)
             }
             if menu['found'] and menu['nutrition']:
-                item_data.update(_to_display_nutrients(menu['nutrition']))
+                if menu.get('is_substitute', False):
+                    # substitute는 스케일링 없이 원본 API 값 (참고용)
+                    item_data.update(_to_display_nutrients(menu['nutrition'], 1.0))
+                else:
+                    # 원본 아이템: protein은 protein_ratio, 나머지는 kcal ratio
+                    scaled_nut = {}
+                    for nk in NUTRIENT_KEYS:
+                        nv = menu['nutrition'].get(nk)
+                        v = float(nv) if nv is not None else 0.0
+                        if nk == 'protein':
+                            scaled_nut[nk] = round(v * protein_ratio, 2)
+                        else:
+                            scaled_nut[nk] = round(v * ratio, 2)
+                    item_data.update(_to_display_nutrients(scaled_nut, 1.0))
             else:
                 item_data.update({k: 0 for k in DAYCARE_TARGET})
             raw_items.append(item_data)
 
-        raw_subtotal = _to_display_nutrients(meal_result.get('total', {}))
+        # subtotal: 원본 아이템만 합산 (= DB kcal/protein과 일치해야 함)
+        raw_sub = {k: 0.0 for k in DAYCARE_TARGET}
+        for it in raw_items:
+            if not it.get('is_substitute', False):
+                for k in raw_sub:
+                    raw_sub[k] = round(raw_sub[k] + it.get(k, 0), 1)
+
         stage1_meals.append({
             'meal_type': m['meal_type'],
             'items': raw_items,
-            'subtotal': raw_subtotal
+            'subtotal': raw_sub
         })
         for k in raw_total:
-            raw_total[k] = round(raw_total[k] + raw_subtotal.get(k, 0), 1)
+            raw_total[k] = round(raw_total[k] + raw_sub.get(k, 0), 1)
 
-        # 스케일링: DB에 HWP 열량이 있으면 비율 보정 (직접 계산)
-        api_total_cal = meal_result.get('total', {}).get('calories', 0)
-        if db_kcal and db_kcal > 0 and api_total_cal > 0:
-            ratio = db_kcal / api_total_cal
-            scaled_total = {}
-            for key, val in meal_result.get('total', {}).items():
-                scaled_total[key] = round(val * ratio, 1)
-            print(f"[Stage2] {m['meal_type']} 스케일링: API={api_total_cal}kcal → DB={db_kcal}kcal, ratio={ratio:.4f}")
-        else:
-            ratio = 1.0
-            scaled_total = dict(meal_result.get('total', {}))
-            print(f"[Stage2] {m['meal_type']} 스케일링 미적용: API={api_total_cal}kcal, DB_kcal={db_kcal}")
-
-        items = []
-        for menu in meal_result['menus']:
-            item_data = {
-                'name': menu['name'],
-                'source': 'api' if menu['found'] else 'unknown',
-                'is_substitute': menu.get('is_substitute', False)
-            }
-            if menu['found'] and menu['nutrition']:
-                item_data.update(_to_display_nutrients(menu['nutrition'], ratio))
-            else:
-                item_data.update({k: 0 for k in DAYCARE_TARGET})
-            items.append(item_data)
-
-        subtotal = _to_display_nutrients(scaled_total)
-
+        # Stage 2: 동일 값 사용
         stage2_meals.append({
             'meal_type': m['meal_type'],
-            'items': items,
-            'subtotal': subtotal,
+            'items': raw_items,
+            'subtotal': dict(raw_sub),
             'target_kcal': db_kcal or None,
             'target_protein': db_protein or None,
             'scale_ratio': round(ratio, 4)
         })
 
         for k in grand_total:
-            grand_total[k] = round(grand_total[k] + subtotal.get(k, 0), 1)
+            grand_total[k] = round(grand_total[k] + raw_sub.get(k, 0), 1)
 
     stage1 = {'meals': stage1_meals, 'total': raw_total}
-    print(f"[Stage1 합계] 식약처 원본 총열량: {raw_total.get('calories', 0)}kcal")
-    print(f"[Stage2 합계] 보정 후 총열량: {grand_total.get('calories', 0)}kcal")
+    print(f"[Stage1 합계] 스케일링 후 총열량: {raw_total}")
+    print(f"[Stage2 합계] 보정 후 총열량: {grand_total}")
 
     # ── Stage 2: 보정된 수치 + 권장량 대비 부족분 (서버에서 직접) ──
-    children_info = []
-    child_name = ''
-    child_age = 0
-    if role == "parent" and user_id:
-        children_info = _get_my_children_info(user_id)
-    if children_info:
-        child_name = children_info[0]['name']
-        child_age = children_info[0]['age']
 
     # 자녀 나이에 따라 DAYCARE_TARGET 동적 선택
     target = _get_daycare_target(child_age)
+    print(f"[Stage2] 선택된 목표(child_age={child_age}): {target}")
 
     consumed = dict(grand_total)
     deficit = {}
@@ -500,6 +634,10 @@ def recommend_dinner():
             deficit[k] = 0
             surplus[k] = 0
             status[k] = '적정'
+
+    print(f"[Stage2] consumed={consumed}")
+    print(f"[Stage2] deficit={deficit}")
+    print(f"[Stage2] status={status}")
 
     stage2 = {
         'meals': stage2_meals,
@@ -541,7 +679,7 @@ def recommend_dinner():
 - 가정에서 쉽게 만들 수 있는 메뉴 2~3개 추천
 - 부족한 영양소를 채우는 메뉴 우선"""
 
-    age_group = '1~2세'
+    age_group = '3~5세' if child_age >= 3 else '1~2세'
     prompt = f"""{age_group} 아이의 오늘 어린이집 식사 영양 정보:
 실제 섭취량: {consumed_text}
 부족 영양소: {deficit_text}

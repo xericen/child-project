@@ -692,26 +692,27 @@ def get_meal_files():
     else:
         next_month = f"{now.year}-{str(now.month + 1).zfill(2)}"
 
-    current_files = []
-    next_files = []
+    # 전체 파일을 월별로 그룹핑
+    month_groups = {}
     try:
         if fs.exists(meta_path):
             meta = fs.read.json(meta_path, default=[])
             for f in meta:
-                tm = f.get('target_month') or f.get('month', '')
-                if tm == current_month:
-                    current_files.append(f)
-                elif tm == next_month:
-                    next_files.append(f)
-                elif not tm:
-                    current_files.append(f)
-            current_files.sort(key=lambda x: x.get('created_at', ''), reverse=True)
-            next_files.sort(key=lambda x: x.get('created_at', ''), reverse=True)
+                tm = f.get('target_month') or f.get('month', '') or current_month
+                if tm not in month_groups:
+                    month_groups[tm] = []
+                month_groups[tm].append(f)
+            for tm in month_groups:
+                month_groups[tm].sort(key=lambda x: x.get('created_at', ''), reverse=True)
     except Exception:
         pass
 
+    # 월 키를 역순 정렬 (최신월 먼저)
+    sorted_months = sorted(month_groups.keys(), reverse=True)
+    month_files = [{'month': m, 'files': month_groups[m]} for m in sorted_months]
+
     wiz.response.status(200, current_month=current_month, next_month=next_month,
-        current_files=current_files, next_files=next_files)
+        month_files=month_files)
 
 def upload_meal_file():
     role = wiz.session.get("role")
@@ -929,9 +930,10 @@ def _parse_meal_html(html_content, styles_css=''):
     year = None
     month = None
     meals = []
-    daily_kcal = {}
-    daily_protein = {}
+    daily_kcal = {}       # {date_str: {'12': kcal, '35': kcal}}
+    daily_protein = {}    # {date_str: {'12': protein, '35': protein}}
     daily_theme = {}
+    has_dual_age = False  # 1~2세/3~5세 양쪽 모두 있는 식단표인지
 
     meal_table = None
     for table in tables:
@@ -1052,32 +1054,143 @@ def _parse_meal_html(html_content, styles_css=''):
                             daily_theme[date_str] = theme
 
             elif is_kcal:
-                for col_start, colspan, text in cells_data[1:]:
-                    if col_start in current_date_map:
-                        day = current_date_map[col_start]
-                        num_match = re.search(r'[\d,]+', text.replace(',', ''))
-                        if num_match:
-                            try:
-                                kcal_val = int(num_match.group().replace(',', ''))
-                                if 100 <= kcal_val <= 5000:
-                                    date_str = f'{year}-{month:02d}-{day:02d}'
-                                    daily_kcal[date_str] = kcal_val
-                            except ValueError:
-                                pass
+                # 열량/단백질 행 파싱 — 두 가지 형식 처리:
+                # (A) "열량/단백질" 합쳐진 행: 값이 "448/18" 형태
+                #     - "1~2세", "3~5세" 라벨 셀이 앞에 올 수 있음 → 스킵
+                #     - 라벨 있으면 값이 1~2세/3~5세 교대, 없으면 단일 연령
+                # (B) "열량" 단독 행: 값이 숫자만 (기존 방식)
+                is_combined = '단백질' in first_clean  # "열량/단백질" 합쳐진 형태
+                data_cells = cells_data[1:]
+
+                # 1~2세/3~5세 라벨 셀 감지 및 스킵
+                label_count = 0
+                for _, _, text in data_cells:
+                    clean = re.sub(r'\s+', '', text)
+                    if re.match(r'^[1-3][-~][2-5]세?$', clean):
+                        label_count += 1
+                        if '3' in clean or '5' in clean:
+                            has_dual_age = True
+                    else:
+                        break
+                if label_count > 0:
+                    data_cells = data_cells[label_count:]
+
+                # 날짜 순서 가져오기
+                sorted_days = sorted(current_date_map.values())
+
+                if has_dual_age:
+                    # 값이 1~2세/3~5세 교대로 나옴
+                    value_texts = [text for _, _, text in data_cells]
+                    day_idx = 0
+                    for vi in range(0, len(value_texts), 2):
+                        if day_idx >= len(sorted_days):
+                            break
+                        day = sorted_days[day_idx]
+                        date_str = f'{year}-{month:02d}-{day:02d}'
+
+                        # 1~2세 값
+                        val_12 = value_texts[vi] if vi < len(value_texts) else ''
+                        # 3~5세 값
+                        val_35 = value_texts[vi + 1] if vi + 1 < len(value_texts) else ''
+
+                        if is_combined:
+                            # "448/18" → kcal=448, protein=18
+                            m12 = re.match(r'([\d,]+)\s*/\s*([\d,.]+)', val_12.replace(',', ''))
+                            m35 = re.match(r'([\d,]+)\s*/\s*([\d,.]+)', val_35.replace(',', ''))
+                            if m12:
+                                k12 = int(m12.group(1))
+                                p12 = float(m12.group(2))
+                                if 100 <= k12 <= 5000:
+                                    daily_kcal.setdefault(date_str, {})['12'] = k12
+                                    daily_protein.setdefault(date_str, {})['12'] = p12
+                            if m35:
+                                k35 = int(m35.group(1))
+                                p35 = float(m35.group(2))
+                                if 100 <= k35 <= 5000:
+                                    daily_kcal.setdefault(date_str, {})['35'] = k35
+                                    daily_protein.setdefault(date_str, {})['35'] = p35
+                        else:
+                            # 열량만 있는 행
+                            nm12 = re.search(r'[\d,]+', val_12.replace(',', ''))
+                            nm35 = re.search(r'[\d,]+', val_35.replace(',', ''))
+                            if nm12:
+                                k12 = int(nm12.group().replace(',', ''))
+                                if 100 <= k12 <= 5000:
+                                    daily_kcal.setdefault(date_str, {})['12'] = k12
+                            if nm35:
+                                k35 = int(nm35.group().replace(',', ''))
+                                if 100 <= k35 <= 5000:
+                                    daily_kcal.setdefault(date_str, {})['35'] = k35
+                        day_idx += 1
+                else:
+                    # 단일 연령 (기존 호환)
+                    if is_combined:
+                        value_texts = [text for _, _, text in data_cells]
+                        for vi, val in enumerate(value_texts):
+                            if vi >= len(sorted_days):
+                                break
+                            day = sorted_days[vi]
+                            date_str = f'{year}-{month:02d}-{day:02d}'
+                            m = re.match(r'([\d,]+)\s*/\s*([\d,.]+)', val.replace(',', ''))
+                            if m:
+                                k = int(m.group(1))
+                                p = float(m.group(2))
+                                if 100 <= k <= 5000:
+                                    daily_kcal.setdefault(date_str, {})['12'] = k
+                                    daily_protein.setdefault(date_str, {})['12'] = p
+                    else:
+                        for col_start, colspan, text in cells_data[1:]:
+                            if col_start in current_date_map:
+                                day = current_date_map[col_start]
+                                num_match = re.search(r'[\d,]+', text.replace(',', ''))
+                                if num_match:
+                                    try:
+                                        kcal_val = int(num_match.group().replace(',', ''))
+                                        if 100 <= kcal_val <= 5000:
+                                            date_str = f'{year}-{month:02d}-{day:02d}'
+                                            daily_kcal.setdefault(date_str, {})['12'] = kcal_val
+                                    except ValueError:
+                                        pass
 
             elif is_protein:
-                for col_start, colspan, text in cells_data[1:]:
-                    if col_start in current_date_map:
-                        day = current_date_map[col_start]
-                        num_match = re.search(r'[\d,.]+', text.replace(',', ''))
-                        if num_match:
-                            try:
-                                protein_val = float(num_match.group().replace(',', ''))
-                                if 0 < protein_val <= 200:
-                                    date_str = f'{year}-{month:02d}-{day:02d}'
-                                    daily_protein[date_str] = protein_val
-                            except ValueError:
-                                pass
+                # 단백질 단독 행 (열량과 분리된 경우)
+                data_cells = cells_data[1:]
+                label_count = 0
+                for _, _, text in data_cells:
+                    clean = re.sub(r'\s+', '', text)
+                    if re.match(r'^[1-3][-~][2-5]세?$', clean):
+                        label_count += 1
+                    else:
+                        break
+                if label_count > 0:
+                    data_cells = data_cells[label_count:]
+                sorted_days = sorted(current_date_map.values())
+
+                if has_dual_age:
+                    value_texts = [text for _, _, text in data_cells]
+                    day_idx = 0
+                    for vi in range(0, len(value_texts), 2):
+                        if day_idx >= len(sorted_days):
+                            break
+                        day = sorted_days[day_idx]
+                        date_str = f'{year}-{month:02d}-{day:02d}'
+                        nm12 = re.search(r'[\d,.]+', value_texts[vi].replace(',', '') if vi < len(value_texts) else '')
+                        nm35 = re.search(r'[\d,.]+', value_texts[vi + 1].replace(',', '') if vi + 1 < len(value_texts) else '')
+                        if nm12:
+                            daily_protein.setdefault(date_str, {})['12'] = float(nm12.group())
+                        if nm35:
+                            daily_protein.setdefault(date_str, {})['35'] = float(nm35.group())
+                        day_idx += 1
+                else:
+                    value_texts = [text for _, _, text in data_cells]
+                    for vi, val in enumerate(value_texts):
+                        if vi >= len(sorted_days):
+                            break
+                        day = sorted_days[vi]
+                        date_str = f'{year}-{month:02d}-{day:02d}'
+                        nm = re.search(r'[\d,.]+', val.replace(',', ''))
+                        if nm:
+                            daily_protein.setdefault(date_str, {})['12'] = float(nm.group())
 
             elif meal_type:
                 for col_start, colspan, text in cells_data[1:]:
@@ -1107,7 +1220,7 @@ def _parse_meal_html(html_content, styles_css=''):
                                 except ValueError:
                                     pass
 
-    return year, month, meals, daily_kcal, daily_theme
+    return year, month, meals, daily_kcal, daily_protein, daily_theme
 
 def parse_hwp_meal():
     role = wiz.session.get("role")
@@ -1185,7 +1298,7 @@ def parse_hwp_meal():
             pass
         wiz.response.status(500, message=convert_error)
 
-    year, month, meals, daily_kcal, daily_theme = _parse_meal_html(html_content, styles_css)
+    year, month, meals, daily_kcal, daily_protein, daily_theme = _parse_meal_html(html_content, styles_css)
 
     if not meals:
         try:
@@ -1214,8 +1327,13 @@ def parse_hwp_meal():
     inserted = 0
     for meal in meals:
         try:
-            meal_kcal = daily_kcal.get(meal['date']) if meal['meal_type'] == '점심' else None
-            meal_protein = daily_protein.get(meal['date']) if meal['meal_type'] == '점심' else None
+            kcal_data = daily_kcal.get(meal['date'], {})
+            protein_data = daily_protein.get(meal['date'], {})
+            # 점심 행에만 열량/단백질 저장 (일일 합계)
+            meal_kcal = kcal_data.get('12') if meal['meal_type'] == '점심' else None
+            meal_protein = protein_data.get('12') if meal['meal_type'] == '점심' else None
+            meal_kcal_35 = kcal_data.get('35') if meal['meal_type'] == '점심' else None
+            meal_protein_35 = protein_data.get('35') if meal['meal_type'] == '점심' else None
             meal_theme = daily_theme.get(meal['date'])
             Meals.create(
                 server_id=server_id,
@@ -1227,6 +1345,8 @@ def parse_hwp_meal():
                 theme=meal_theme,
                 kcal=meal_kcal,
                 protein=meal_protein,
+                kcal_35=meal_kcal_35,
+                protein_35=meal_protein_35,
                 photo_path='',
                 created_by=user_id
             )
@@ -1322,7 +1442,7 @@ def reparse_stored_hwp():
         if not html_content:
             continue
 
-        year, month, meals, daily_kcal, daily_theme = _parse_meal_html(html_content, styles_css)
+        year, month, meals, daily_kcal, daily_protein, daily_theme = _parse_meal_html(html_content, styles_css)
         if not meals:
             errors.append(f"{entry['file_name']}: 식단 파싱 실패")
             continue
@@ -1331,14 +1451,20 @@ def reparse_stored_hwp():
         updated = 0
         for meal in meals:
             try:
-                meal_kcal = daily_kcal.get(meal['date']) if meal['meal_type'] == '점심' else None
-                meal_protein = daily_protein.get(meal['date']) if meal['meal_type'] == '점심' else None
+                kcal_data = daily_kcal.get(meal['date'], {})
+                protein_data = daily_protein.get(meal['date'], {})
+                meal_kcal = kcal_data.get('12') if meal['meal_type'] == '점심' else None
+                meal_protein = protein_data.get('12') if meal['meal_type'] == '점심' else None
+                meal_kcal_35 = kcal_data.get('35') if meal['meal_type'] == '점심' else None
+                meal_protein_35 = protein_data.get('35') if meal['meal_type'] == '점심' else None
                 meal_theme = daily_theme.get(meal['date'])
                 rows_updated = Meals.update(
                     content=meal['content'],
                     theme=meal_theme,
                     kcal=meal_kcal if meal_kcal else Meals.kcal,
                     protein=meal_protein if meal_protein else Meals.protein,
+                    kcal_35=meal_kcal_35 if meal_kcal_35 else Meals.kcal_35,
+                    protein_35=meal_protein_35 if meal_protein_35 else Meals.protein_35,
                     allergy_numbers=json.dumps(meal.get('allergy_numbers', [])),
                     dish_allergies=json.dumps(meal.get('dish_allergies', {}), ensure_ascii=False)
                 ).where(
@@ -1397,7 +1523,10 @@ def get_stats():
                 'meal_type': row.meal_type or '기타',
                 'content': row.content or ''
             })
-            if row.kcal and row.kcal > 0:
+            # 선택된 연령에 맞는 칼로리 사용
+            if selected_age == '3~5세' and row.kcal_35 and row.kcal_35 > 0:
+                daily_calories[date_str] = row.kcal_35
+            elif row.kcal and row.kcal > 0:
                 daily_calories[date_str] = row.kcal
     except Exception as e:
         wiz.response.status(500, message=str(e))
@@ -1418,7 +1547,7 @@ def get_stats():
         results_by_date = {d: 0 for d in missing_dates}
         if all_tasks:
             with ThreadPoolExecutor(max_workers=8) as executor:
-                futures = {executor.submit(nutrition_api.search_meal, content): (date_str, meal_type) for date_str, meal_type, content in all_tasks}
+                futures = {executor.submit(nutrition_api.search_meal, content, selected_age): (date_str, meal_type) for date_str, meal_type, content in all_tasks}
                 for future in futures:
                     date_str, meal_type = futures[future]
                     try:
@@ -1603,11 +1732,16 @@ def get_parent_stats():
         pass
 
     result_children = []
+    # 연령별 목표 열량 매핑
+    _nutrition_ref = wiz.model("nutrition_api")
+    _TARGETS = _nutrition_ref.DAYCARE_TARGETS
+    AGE_KCAL = {age: t['calories']['value'] for age, t in _TARGETS.items()}
+
     for child in children_rows:
         # 연령 계산
         age_years = (today - child.birthdate).days // 365 if child.birthdate else 3
-        age_group = '1~2세'
-        target_kcal = AGE_NUTRITION.get(age_group, {}).get('kcal', DEFAULT_TARGET_KCAL)
+        age_group = '3~5세' if age_years >= 3 else '1~2세'
+        target_kcal = AGE_KCAL.get(age_group, 420)
 
         # 자녀 알레르기 조회
         child_allergies = list(ChildAllergies.select().where(ChildAllergies.child_id == child.id))
@@ -1720,6 +1854,9 @@ def get_parent_stats():
             'allergy_days': allergy_days,
         })
 
+    # 이번 주 알레르기 매칭이 없는 아이는 제외
+    result_children = [c for c in result_children if c['allergy_days']]
+
     wiz.response.status(200,
         children=result_children,
         week_start=monday.strftime("%Y-%m-%d"),
@@ -1821,12 +1958,13 @@ def get_ai_analysis():
         wiz.response.status(200, nutrients={}, deficient_nutrients=[], summary="")
 
     # 연령별 어린이집 제공분 (점심+간식2회) 하루 영양 기준 — 공유 상수 참조
+    nutrition_api = wiz.model("nutrition_api")
+    selected_age = "1~2세"
     _TARGETS = nutrition_api.DAYCARE_TARGETS
     DAYCARE_TARGET = _TARGETS.get(selected_age, _TARGETS['1~2세'])
     DISPLAY_NAMES = nutrition_api.DISPLAY_NAMES
 
     # 식약처 API 기반 월간 영양소 합산 (스케일링 적용, 병렬 조회)
-    nutrition_api = wiz.model("nutrition_api")
     month_total = {k: 0.0 for k in DAYCARE_TARGET}
     num_days = len(daily_meals)
 
@@ -1846,7 +1984,7 @@ def get_ai_analysis():
             with ThreadPoolExecutor(max_workers=8) as executor:
                 futures = {}
                 for i, (date_str, meal_type, content, day_kcal) in enumerate(all_tasks):
-                    futures[executor.submit(nutrition_api.search_meal, content)] = i
+                    futures[executor.submit(nutrition_api.search_meal, content, selected_age)] = i
                 for future in futures:
                     idx = futures[future]
                     try:

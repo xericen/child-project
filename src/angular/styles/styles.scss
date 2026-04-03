@@ -1,1 +1,21 @@
-@import "styles/sample"
+@import "styles/sample";
+
+.login-wrap {
+  position: relative;
+}
+
+.logo-icon {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 36px;
+  height: 36px;
+  margin: 0;
+  z-index: 1;
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+}

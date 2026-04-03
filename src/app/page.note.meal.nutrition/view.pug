@@ -12,12 +12,6 @@
       span.month-title {{ selectedMonth }}
       span.nav-arrow('(click)'="nextMonth()") ▶
 
-    //- 연령 선택
-    .age-selector
-      button.age-btn(*ngFor="let age of ages",
-        '[class.active]'="selectedAge === age",
-        '(click)'="selectAge(age)") {{ age }}
-
     //- 로딩
     div(*ngIf="loading")
       .loading-wrap
@@ -33,22 +27,7 @@
     //- 대시보드 메인
     div(*ngIf="!loading && totalDays > 0")
 
-      //- 1. 요약 카드
-      .summary-cards
-        .s-card.s-card-blue
-          .s-card-num {{ totalDays }}일
-          .s-card-label 등원일수
-        .s-card.s-card-green
-          .s-card-num {{ sufficientDays }}일
-          .s-card-label 열량 충족
-        .s-card.s-card-orange
-          .s-card-num {{ deficientDays }}일
-          .s-card-label 열량 미달
-        .s-card.s-card-red
-          .s-card-num {{ deficientNutrients.length }}개
-          .s-card-label 부족 영양소
-
-      //- 2. AI 종합 평가
+      //- 1. AI 종합 평가
       .section(*ngIf="summary")
         .section-title 🤖 AI 종합 평가
         .ai-summary {{ summary }}
@@ -70,44 +49,7 @@
             .nutrient-detail
               span.n-avg 일평균 {{ n.avgDaily }}{{ n.unit }}
 
-      //- 4. 일별 열량 추이 (세로 막대 차트)
-      .section
-        .section-title 📊 일별 열량 추이
-        .section-subtitle 평일 기준 (주말 제외)
-        .calorie-chart-wrap
-          .calorie-chart
-            .calorie-target-line('[style.bottom.%]'="getBarHeight(getTargetKcal())")
-              span.target-label {{ getTargetKcal() }}kcal
-            .bar-group(*ngFor="let e of getDailyCalorieEntries()")
-              .bar-col
-                .bar('[style.height.%]'="getBarHeight(e.kcal)",
-                  '[style.background]'="getBarColor(e.kcal)")
-              span.bar-label {{ e.day }}
-          .chart-legend
-            span.legend-item
-              span.legend-dot(style="background: #22c55e")
-              |  충족 (90%↑)
-            span.legend-item
-              span.legend-dot(style="background: #f59e0b")
-              |  주의 (70-89%)
-            span.legend-item
-              span.legend-dot(style="background: #ef4444")
-              |  미달 (70%↓)
-
-      //- 5. 열량 캘린더
-      .section
-        .section-title 🗓️ 열량 캘린더
-        .cal-grid
-          span.cal-header(*ngFor="let d of ['일','월','화','수','목','금','토']") {{ d }}
-          .cal-day(*ngFor="let item of calendarDays",
-            '[class.empty]'="!item.day",
-            '[class.sufficient]'="item.status === 'sufficient'",
-            '[class.deficient]'="item.status === 'deficient'")
-            span.cal-num(*ngIf="item.day") {{ item.day }}
-            span.cal-kcal(*ngIf="item.kcal") {{ item.kcal }}
-            span.cal-pct(*ngIf="item.pct", '[style.color]'="getBarColor(item.kcal)") {{ item.pct }}%
-
-      //- 6. 부족 영양소 보충 조언
+      //- 4. 부족 영양소 보충 조언
       .section(*ngIf="deficientNutrients.length > 0")
         .section-title ⚠️ 보충이 필요한 영양소
         .deficient-list
@@ -120,7 +62,7 @@
                 span.def-target (기준: {{ d.target }})
             .def-advice {{ d.advice }}
 
-      //- 7. 모든 영양소 양호
+      //- 5. 모든 영양소 양호
       .section(*ngIf="deficientNutrients.length === 0")
         .all-good
           span.all-good-emoji ✅

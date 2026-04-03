@@ -176,3 +176,4 @@
 | 2026-03-30 | 008 | 부모 로그인 후 childcheck 필수 경유 플로우 수정 | [상세](devlog/2026-03-30/008-childcheck-mandatory-flow.md) |
 | 2026-03-30 | 009 | 영양 데이터 소스를 로컬 DB 검색으로 전환 | [상세](devlog/2026-03-30/009-nutrition-local-db-search.md) |
 | 2026-03-30 | 010 | 칼로리 계산 통일 + 연령별 1인분 중량 테이블 | [상세](devlog/2026-03-30/010-calorie-calculation-unification.md) |
+| 2026-04-01 | 001 | 식단 통계/영양분석 4건 수정 (3~5세 열량, 캘린더 제거, 로딩색상, Stage1 스케일링) | [상세](devlog/2026-04-01/001-stats-nutrition-fixes.md) || 2026-04-02 | 001 | 영양 분석 7건 수정 (통계UI, 중앙정렬, 연령별구분, 카드불일치, 저녁추천, 로깅, 검증) | [상세](devlog/2026-04-02/001-nutrition-7-fixes.md) |

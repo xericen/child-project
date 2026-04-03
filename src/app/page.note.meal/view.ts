@@ -31,12 +31,12 @@ export class Component implements OnInit {
     };
 
     mealFiles: any[] = [];
-    currentMonthFiles: any[] = [];
-    nextMonthFiles: any[] = [];
+    monthFiles: any[] = [];
     currentMonthLabel: string = '';
     nextMonthLabel: string = '';
     selectedMealFile: File | null = null;
     uploadTargetMonth: string = '';
+    allUploadMonths: string[] = [];
 
     // 식단 수정
     editingMealId: number | null = null;
@@ -428,11 +428,19 @@ export class Component implements OnInit {
     private async loadMealFiles() {
         const res = await wiz.call("get_meal_files");
         if (res.code === 200) {
-            this.currentMonthFiles = res.data.current_files || [];
-            this.nextMonthFiles = res.data.next_files || [];
+            this.monthFiles = res.data.month_files || [];
             this.currentMonthLabel = res.data.current_month || '';
             this.nextMonthLabel = res.data.next_month || '';
-            this.mealFiles = [...this.currentMonthFiles, ...this.nextMonthFiles];
+            this.mealFiles = [];
+            for (const group of this.monthFiles) {
+                this.mealFiles.push(...(group.files || []));
+            }
+            // 업로드 대상 월 옵션: 이번달 + 다음달 + 기존 월들겹치지 않게
+            const monthSet = new Set<string>([this.currentMonthLabel, this.nextMonthLabel]);
+            for (const group of this.monthFiles) {
+                monthSet.add(group.month);
+            }
+            this.allUploadMonths = Array.from(monthSet).sort().reverse();
             if (!this.uploadTargetMonth) {
                 this.uploadTargetMonth = this.currentMonthLabel;
             }
@@ -484,7 +492,7 @@ export class Component implements OnInit {
     private dailyCaloriesCache: any = {};
 
     private async loadStats() {
-        const res = await wiz.call("get_stats", { month: this.selectedMonth });
+        const res = await wiz.call("get_stats", { month: this.selectedMonth, age: this.selectedAge });
         if (res.code === 200) {
             this.statsData = res.data;
             const ageNut = res.data.age_nutrition || {};
@@ -503,7 +511,7 @@ export class Component implements OnInit {
         this.selectedAge = label;
         const sel = this.ageNutrition.find((a: any) => a.label === label);
         if (sel) this.targetKcal = sel.kcal;
-        this.buildCalorieCalendar(this.dailyCaloriesCache);
+        await this.loadStats();
         await this.service.render();
     }
 

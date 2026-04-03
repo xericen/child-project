@@ -8,6 +8,7 @@ export class Component implements OnInit {
     lunchMenu: string = '';
     afternoonSnack: string = '';
     allergyWarnings: any = {};
+    pageLoading: boolean = true;
 
     // 저녁 추천 (부모용) - 3단계 분석
     dinnerLoading: boolean = false;
@@ -19,7 +20,9 @@ export class Component implements OnInit {
 
     public async ngOnInit() {
         await this.service.init();
+        await this.service.render();
         await this.loadData();
+        this.pageLoading = false;
         await this.service.render();
     }
 
@@ -57,117 +60,12 @@ export class Component implements OnInit {
 
     private fixGreenAndScaling() {
         if (!this.analysis?.stage1?.meals) return;
-        const keys = this.nutrientKeys();
-
-        // 1. 원본 식단 텍스트에서 {{green:메뉴명}} 추출 (표시용)
-        const greenNames = new Set<string>();
-        const greenRegex = /\{\{green:(.*?)\}\}/g;
-        for (const content of [this.morningSnack, this.lunchMenu, this.afternoonSnack]) {
-            let m: any;
-            while ((m = greenRegex.exec(content)) !== null) {
-                const name = m[1].replace(/[ⓢⓄ①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳\d.]/g, '').trim();
-                if (name) greenNames.add(name);
-            }
-        }
-
-        // 2. Stage 1: 원본+대체식 모두 포함, 대체식은 합산에서 제외
-        for (const meal of this.analysis.stage1.meals) {
-            const items = meal.items || [];
-            const sub: any = {};
-            keys.forEach(k => {
-                sub[k] = Math.round(items.filter((it: any) => !it.is_substitute && !greenNames.has(it.name))
-                    .reduce((s: number, it: any) => s + (it[k] || 0), 0) * 10) / 10;
-            });
-            meal.subtotal = sub;
-        }
-        const rawTotal: any = {};
-        keys.forEach(k => {
-            rawTotal[k] = Math.round(
-                this.analysis.stage1.meals.reduce((s: number, ml: any) => s + (ml.subtotal?.[k] || 0), 0) * 10
-            ) / 10;
-        });
-        this.analysis.stage1.total = rawTotal;
-
-        // 3. 끼니별(per-meal) 스케일링: DB kcal/protein이 있는 끼니만 비율 적용
-        // 4. Stage 2: 스케일링 적용 + DAYCARE_TARGET 연령별 적용
-        const DAYCARE_TARGETS: any = {
-            '1~2': {calories: 420, protein: 9.3, fat: 14, carbs: 61, calcium: 210, iron: 2.8},
-        };
-        const childAge = this.analysis?.stage2?.age || 0;
-        const DAYCARE_TARGET: any = DAYCARE_TARGETS['1~2'];
-        if (this.analysis.stage2) {
-            this.analysis.stage2.recommended = DAYCARE_TARGET;
-        }
-
-        if (this.analysis.stage2?.meals) {
-            const consumed: any = {};
-            keys.forEach(k => consumed[k] = 0);
-
-            for (const meal of this.analysis.stage2.meals) {
-                const s1 = this.analysis.stage1.meals.find((m: any) => m.meal_type === meal.meal_type);
-                if (!s1) continue;
-
-                // 끼니별 ratio 계산: DB kcal이 있으면 해당 끼니만 스케일링
-                const mealApiCal = s1.subtotal?.calories || 0;
-                const mealDbKcal = meal.target_kcal || 0;
-                const mealDbProtein = meal.target_protein || 0;
-                const mealApiProtein = s1.subtotal?.protein || 0;
-
-                let kcalRatio = 1.0;
-                if (mealDbKcal > 0 && mealApiCal > 0) {
-                    kcalRatio = mealDbKcal / mealApiCal;
-                }
-                let pRatio = kcalRatio;
-                if (mealDbProtein > 0 && mealApiProtein > 0) {
-                    pRatio = mealDbProtein / mealApiProtein;
-                }
-
-                console.log(`[${meal.meal_type}] 스케일링: API=${mealApiCal}kcal → DB=${mealDbKcal}kcal, ratio=${kcalRatio.toFixed(4)}, protein: API=${mealApiProtein}g → DB=${mealDbProtein}g, ratio=${pRatio.toFixed(4)}`);
-
-                meal.items = (s1.items || []).map((s1Item: any) => {
-                    const scaled: any = { name: s1Item.name, source: s1Item.source };
-                    keys.forEach(k => {
-                        const r = (k === 'protein') ? pRatio : kcalRatio;
-                        scaled[k] = Math.round((s1Item[k] || 0) * r * 10) / 10;
-                    });
-                    return scaled;
-                });
-                meal.scale_ratio = Math.round(kcalRatio * 10000) / 10000;
-
-                const sub: any = {};
-                keys.forEach(k => {
-                    sub[k] = Math.round(meal.items.reduce((s: number, it: any) => s + (it[k] || 0), 0) * 10) / 10;
-                    consumed[k] = Math.round((consumed[k] + sub[k]) * 10) / 10;
-                });
-                meal.subtotal = sub;
-            }
-
-            this.analysis.stage2.consumed = consumed;
-
-            const rec = this.analysis.stage2.recommended || {};
-            const deficit: any = {};
-            const surplus: any = {};
-            const status: any = {};
-            keys.forEach(k => {
-                const diff = Math.round(((consumed[k] || 0) - (rec[k] || 0)) * 10) / 10;
-                if (diff < 0) {
-                    deficit[k] = Math.round(Math.abs(diff) * 10) / 10;
-                    surplus[k] = 0;
-                    status[k] = '부족';
-                } else if (diff > (rec[k] || 0) * 0.1) {
-                    deficit[k] = 0;
-                    surplus[k] = Math.round(diff * 10) / 10;
-                    status[k] = '초과';
-                } else {
-                    deficit[k] = 0;
-                    surplus[k] = 0;
-                    status[k] = '적정';
-                }
-            });
-            this.analysis.stage2.deficit = deficit;
-            this.analysis.stage2.surplus = surplus;
-            this.analysis.stage2.status = status;
-        }
+        // 서버가 이미 DB kcal/protein 기준으로 원본 아이템만 스케일링 완료
+        // 프론트엔드는 서버 값을 그대로 사용, 재계산 금지
+        console.log('[Stage1] 서버 반환값:', this.analysis.stage1.total);
+        console.log('[Stage2] consumed:', this.analysis.stage2?.consumed);
+        console.log('[Stage2] recommended:', this.analysis.stage2?.recommended);
+        console.log('[Stage2] status:', this.analysis.stage2?.status);
     }
 
     public getNutrientLabel(key: string): string {
