@@ -74,6 +74,11 @@ export class Component implements OnInit, AfterViewChecked {
         ref.nativeElement.scrollTop = index * itemH;
     }
 
+    public async selectRole(role: string) {
+        this.selectedRole = role;
+        await this.service.render();
+    }
+
     public formatPhone() {
         const digits = this.phone.replace(/\D/g, '').slice(0, 11);
         if (digits.length <= 3) {

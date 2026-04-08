@@ -8,9 +8,6 @@ input(type="file",
   .login-wrap
     .header-row
       span.btn-back('(click)'="goBack()") ← 뒤로
-      button.btn-stats(*ngIf="mode !== 'stats'",
-        '(click)'="goStats()",
-        '[disabled]'="statsLoading") 📊 통계
 
     // HWP 파싱 로딩
     .hwp-loading(*ngIf="hwpLoading")
@@ -18,94 +15,90 @@ input(type="file",
         p 📋 식단표를 분석하고 있습니다...
         p.hwp-loading-sub 잠시만 기다려주세요
 
-    // 메뉴 모드
-    div(*ngIf="mode === 'menu'")
+    // 캘린더 모드 (기본)
+    div(*ngIf="mode === 'calendar'")
       h1.title
         | 식단표 📋
 
-      // 식단 안내 파일 영역
-      .file-section
-        .file-section-title 📎 식단 안내 파일
+      //- 탭 네비게이션
+      .tab-nav
+        .tab-item('[class.active]'="calendarTab === 'calendar'",
+          '(click)'="switchTab('calendar')")
+          | 📅 캘린더
+        .tab-item('[class.active]'="calendarTab === 'files'",
+          '(click)'="switchTab('files')")
+          | 📁 파일 목록
+          span.tab-badge(*ngIf="totalFileCount > 0") {{ totalFileCount }}
 
-        // 업로드 폼 (교사/원장만)
-        div(*ngIf="role === 'teacher' || role === 'director'")
-          .file-upload-row
-            select.file-month-select([(ngModel)]="uploadTargetMonth")
-              option(*ngFor="let m of allUploadMonths",
-                '[value]'="m") {{ m }}{{ m === currentMonthLabel ? ' (이번달)' : m === nextMonthLabel ? ' (다음달)' : '' }}
-            .file-upload-input-row
-              input.file-input(type="file",
-                '(change)'="onMealFileSelect($event)",
-                '#fileInput'="")
-              button.btn-file-upload('(click)'="uploadMealFile()",
-                '[disabled]'="!selectedMealFile") 업로드
+      //- 캘린더 탭
+      div(*ngIf="calendarTab === 'calendar'")
+        .month-nav
+          span.nav-arrow('(click)'="prevMonth()") ◀
+          span.month-title {{ monthLabel }}
+          span.nav-arrow('(click)'="nextMonth()") ▶
 
-        // 전체 월별 파일 목록
-        .file-month-group(*ngFor="let group of monthFiles")
-          .file-month-label 📅 {{ group.month }}{{ group.month === currentMonthLabel ? ' (이번달)' : group.month === nextMonthLabel ? ' (다음달)' : '' }}
-          div(*ngIf="group.files.length === 0")
-            p.empty-file-msg 식단 안내 파일이 없습니다.
-          .file-list(*ngIf="group.files.length > 0")
-            .file-item(*ngFor="let file of group.files")
-              .file-info('(click)'="downloadMealFile(file)")
-                span.file-icon 📄
-                span.file-name {{ file.original_name }}
-                span.file-date {{ file.created_at }}
-              span.file-delete(*ngIf="role === 'teacher' || role === 'director'",
-                '(click)'="deleteMealFile(file.id)") ✕
+        .calendar-grid
+          span.cal-header.cal-sun 일
+          span.cal-header 월
+          span.cal-header 화
+          span.cal-header 수
+          span.cal-header 목
+          span.cal-header 금
+          span.cal-header.cal-sat 토
+          .cal-day-cell(*ngFor="let item of calendarDays",
+            '(click)'="onCalendarDayClick(item)",
+            '[class.has-meal]'="item.hasMeal",
+            '[class.empty]'="!item.day",
+            '[class.cal-today]'="item.date === todayStr",
+            '[class.cal-sun-day]'="item.dow === 0",
+            '[class.cal-sat-day]'="item.dow === 6")
+            span.cal-day-num {{ item.day }}
+            span.cal-theme-badge(*ngIf="item.theme && getThemeInfo(item.theme)",
+              '[style.background]'="getThemeInfo(item.theme).color") {{ getThemeInfo(item.theme).emoji }}
 
-        div(*ngIf="monthFiles.length === 0")
-          p.empty-file-msg 등록된 식단 안내 파일이 없습니다.
+        //- 영양 분석 대시보드 버튼
+        button.btn-nutrition('(click)'="goNutrition()")
+          | 📊 영양 분석 대시보드
 
-      // 식단 조회 버튼
-      .menu-buttons
-        button.menu-btn('(click)'="goMonthly()")
-          span.menu-icon 📅
-          span.menu-label 월간
+      //- 파일 목록 탭
+      div(*ngIf="calendarTab === 'files'")
+        .fl-month-nav
+          span.nav-arrow('(click)'="prevMonth()") ◀
+          span.fl-month-title {{ monthLabel }}
+          span.nav-arrow('(click)'="nextMonth()") ▶
 
-        button.menu-btn('(click)'="goDaily()")
-          span.menu-icon 📆
-          span.menu-label 날짜별
-
-        button.menu-btn.menu-btn-accent(*ngIf="role === 'teacher' || role === 'director'",
-          '(click)'="goNutritionDashboard()")
-          span.menu-icon 📊
-          span.menu-label 영양분석
-
-    // 월간 캘린더 모드
-    div(*ngIf="mode === 'monthly'")
-      .month-nav
-        span.nav-arrow('(click)'="prevMonth()") ◀
-        span.month-title {{ selectedMonth }}
-        span.nav-arrow('(click)'="nextMonth()") ▶
-
-      // HWP 식단표 업로드/상태 영역 (교사/원장만)
-      div(*ngIf="role === 'teacher' || role === 'director'")
-        // 업로드된 파일이 없으면 업로드 버튼 표시
-        .hwp-upload-area(*ngIf="!monthHwpFile",
+        // HWP 업로드 (교사/원장)
+        .fl-hwp-upload(*ngIf="(role === 'teacher' || role === 'director') && !monthHwpFile",
           '(click)'="triggerHwpUpload()")
-          span.hwp-upload-icon 📋
-          span.hwp-upload-text 식단표 업로드 (.hwp)
+          span 📁 식단표(HWP) 업로드
 
-        // 업로드된 파일이 있으면 파일 정보 + 삭제/재파싱 버튼 표시
-        .hwp-file-status(*ngIf="monthHwpFile")
-          .hwp-file-row
-            span.hwp-status-icon ✅
-            span.hwp-file-name {{ monthHwpFile.original_name }}
-          .hwp-file-actions
-            span.hwp-file-reparse('(click)'="reparseHwp()",
-              '[class.loading]'="reparseLoading") {{ reparseLoading ? '재파싱 중...' : '🔄 테마/색상 재파싱' }}
-            span.hwp-file-delete('(click)'="deleteMonthHwp()") 삭제
+        .fl-hwp-status(*ngIf="(role === 'teacher' || role === 'director') && monthHwpFile")
+          span.fl-hwp-name {{ monthHwpFile.original_name }}
+          .fl-hwp-actions
+            span.fl-hwp-reparse('(click)'="reparseHwp()",
+              '[class.loading]'="reparseLoading") {{ reparseLoading ? '처리중...' : '🔄 재파싱' }}
+            span.fl-hwp-delete('(click)'="deleteMonthHwp()") 삭제
 
-      .calendar-grid
-        span.cal-header(*ngFor="let d of ['일','월','화','수','목','금','토']") {{ d }}
-        .cal-day-cell(*ngFor="let item of calendarDays",
-          '(click)'="onCalendarDayClick(item)",
-          '[class.has-meal]'="item.hasMeal",
-          '[class.empty]'="!item.day")
-          span.cal-day-num {{ item.day }}
-          span.cal-theme-badge(*ngIf="item.theme && getThemeInfo(item.theme)",
-            '[style.background]'="getThemeInfo(item.theme).color") {{ getThemeInfo(item.theme).emoji }}
+        // 파일 리스트
+        .fl-list
+          .fl-item(*ngFor="let file of currentMonthFiles",
+            '(click)'="downloadMealFile(file)")
+            .fl-item-info
+              .fl-item-name {{ file.original_name }}
+              .fl-item-date {{ file.created_at }} 업로드
+            span.fl-item-del(*ngIf="role === 'teacher' || role === 'director'",
+              '(click)'="$event.stopPropagation(); deleteMealFile(file.id)") ✕
+
+          .fl-empty(*ngIf="currentMonthFiles.length === 0 && !monthHwpFile")
+            | 등록된 파일이 없습니다.
+
+        // 파일 업로드 (교사/원장)
+        .fl-upload(*ngIf="role === 'teacher' || role === 'director'")
+          input.fl-upload-input(type="file",
+            '(change)'="onMealFileSelect($event)",
+            '#fileInput'="")
+          button.fl-upload-btn('(click)'="uploadMealFile()",
+            '[disabled]'="!selectedMealFile") 업로드
 
     // 날짜별 상세 모드
     div(*ngIf="mode === 'daily'")
@@ -131,7 +124,23 @@ input(type="file",
             span.meal-type {{ getMealIcon(meal.meal_type) }} {{ meal.meal_type }}
             span.meal-actions(*ngIf="role === 'teacher' || role === 'director'")
               span.meal-edit('(click)'="startEdit(meal)") ✎
-          .meal-content('[innerHTML]'="formatMealContent(meal.content)")
+          .meal-content
+            div.meal-line(*ngFor="let item of parseMealLines(meal.content)")
+              // 대체식이 있는 줄 (교사/원장용 체크박스)
+              div(*ngIf="item.hasSubstitute && (role === 'teacher' || role === 'director')")
+                span.sub-row
+                  span.sub-original('[class.sub-strikethrough]'="isSubstituteSelected(meal, item.text)") {{ item.text }}
+                  span.sub-check('(click)'="toggleSubstitute(meal, item.text, item.substituteItem)",
+                    '[class.sub-checked]'="isSubstituteSelected(meal, item.text)")
+                    span(*ngIf="!isSubstituteSelected(meal, item.text)") ☐
+                    span(*ngIf="isSubstituteSelected(meal, item.text)") ☑
+                  span.sub-substitute('[class.sub-active]'="isSubstituteSelected(meal, item.text)") {{ item.substituteItem }}
+              // 대체식이 있는 줄 (부모용 — 체크박스 없이 기존 green 표시)
+              div(*ngIf="item.hasSubstitute && role === 'parent'")
+                span {{ item.text }}
+                span.green-text  {{ item.substituteItem }}
+              // 일반 줄
+              span(*ngIf="!item.hasSubstitute") {{ item.text }}
           .meal-allergy-warning(*ngIf="role === 'parent' && meal.allergy_match")
             | ⚠️ 알레르기 주의: {{ meal.matched_allergens?.join(', ') }}
           img.meal-photo(*ngIf="meal.photo_path",
@@ -153,20 +162,20 @@ input(type="file",
             button.btn-edit-save('(click)'="updateMeal()") 저장
             button.btn-edit-cancel('(click)'="cancelEdit()") 취소
 
-    // 통계 모드
-    div(*ngIf="mode === 'stats'")
+    // 영양분석 모드
+    div(*ngIf="mode === 'nutrition'")
       .month-nav
         span.nav-arrow('(click)'="statsPrevMonth()") ◀
-        span.month-title 이번 달 영양 분석
+        span.month-title 📊 영양분석
         span.nav-arrow('(click)'="statsNextMonth()") ▶
       .stats-date-range {{ selectedMonth }}
 
       // 로딩
-      div(*ngIf="statsLoading")
+      div(*ngIf="nutritionLoading || statsLoading")
         .stats-loading
-          p 📊 통계를 불러오는 중...
+          p 📊 영양분석 데이터를 불러오는 중...
 
-      div(*ngIf="!statsLoading")
+      div(*ngIf="!nutritionLoading && !statsLoading")
         div(*ngIf="!statsData.total_meals")
           p.empty-msg 해당 월 식단 데이터가 없습니다.
 
@@ -187,7 +196,7 @@ input(type="file",
           //- 알레르기 주의 통계 (모든 역할)
           .ns-section.ns-parent-section(*ngIf="parentChildren.length > 0")
             .ns-section-title-toggle('(click)'="allergyExpanded = !allergyExpanded; service.render()")
-              span(*ngIf="role === 'parent'") 👶 우리 아이 식단 안전
+              span(*ngIf="role === 'parent'") ⚠️ 이번 주 알레르기 주의
               span(*ngIf="role === 'director'") ⚠️ 이번 주 알레르기 주의
               span(*ngIf="role === 'teacher'") ⚠️ 우리반 알레르기 주의
               span.ns-toggle-arrow('[class.expanded]'="allergyExpanded") ▼
@@ -211,7 +220,7 @@ input(type="file",
                 .ns-child-safe(*ngIf="child.allergy_days.length === 0 && child.allergy_types.length > 0")
                   | ✅ 이번 주 식단에 알레르기 해당 식품이 없습니다.
 
-          //- 일별 열량 캘린더 (DB 실제 데이터, AI 대기 불필요)
+          //- 일별 열량 캘린더
           .ns-section(*ngIf="statsCalendar.length > 0")
             .ns-section-title 일별 어린이집 제공 열량
             .ns-age-selector
@@ -225,7 +234,7 @@ input(type="file",
                 '[class.sufficient]'="item.status === 'sufficient'",
                 '[class.deficient]'="item.status === 'deficient'")
                 span.ns-cal-num(*ngIf="item.day") {{ item.day }}
-                span.ns-cal-kcal(*ngIf="item.kcal") {{ item.kcal }}kcal
+                span.ns-cal-kcal(*ngIf="item.kcal") {{ item.kcal }}k
                 span.ns-cal-pct(*ngIf="item.pct") {{ item.pct }}%
             .ns-cal-legend
               span.ns-legend-item
@@ -234,4 +243,3 @@ input(type="file",
               span.ns-legend-item
                 span.ns-legend-dot.dot-deficient
                 | 기준 미달 (90%↓)
-            p.ns-cal-hint(*ngIf="calorieSufficient === 0 && calorieDeficient === 0") HWP 식단표를 업로드하면 열량 데이터가 자동으로 표시됩니다.

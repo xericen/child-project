@@ -8,7 +8,7 @@ html(lang="ko")
         link(rel="shortcut icon", href="/assets/favicon.ico")
         link(rel="manifest", href="/assets/manifest.json")
         meta(name="theme-color", content="#5b6ef5")
-        meta(name="apple-mobile-web-app-capable", content="yes")
+        meta(name="mobile-web-app-capable", content="yes")
         meta(name="apple-mobile-web-app-status-bar-style", content="black-translucent")
         meta(name="apple-mobile-web-app-title", content="child")
         link(rel="apple-touch-icon", href="/assets/images/logo-192.png")
@@ -18,7 +18,6 @@ html(lang="ko")
         script.
             // beforeinstallprompt를 Angular보다 먼저 캐치
             window.addEventListener('beforeinstallprompt', function(e) {
-                e.preventDefault();
                 window.__pwaInstallPrompt = e;
             });
             if ('serviceWorker' in navigator) {

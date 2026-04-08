@@ -177,3 +177,17 @@
 | 2026-03-30 | 009 | 영양 데이터 소스를 로컬 DB 검색으로 전환 | [상세](devlog/2026-03-30/009-nutrition-local-db-search.md) |
 | 2026-03-30 | 010 | 칼로리 계산 통일 + 연령별 1인분 중량 테이블 | [상세](devlog/2026-03-30/010-calorie-calculation-unification.md) |
 | 2026-04-01 | 001 | 식단 통계/영양분석 4건 수정 (3~5세 열량, 캘린더 제거, 로딩색상, Stage1 스케일링) | [상세](devlog/2026-04-01/001-stats-nutrition-fixes.md) || 2026-04-02 | 001 | 영양 분석 7건 수정 (통계UI, 중앙정렬, 연령별구분, 카드불일치, 저녁추천, 로깅, 검증) | [상세](devlog/2026-04-02/001-nutrition-7-fixes.md) |
+| 2026-04-06 | 001 | 부모 페이지 저녁메뉴 추천 빈 응답 문제 수정 (에러핸들링, ThreadPool→순차, Gemini 로깅) | [상세](devlog/2026-04-06/001-dinner-recommend-empty-fix.md) |
+| 2026-04-06 | 002 | 어린이 연령별 1인분 칼로리 계산 정확도 개선 (AI 프롬프트에 만 나이·발달단계·1인분 중량 명시) | [상세](devlog/2026-04-06/002-calorie-accuracy-age-improvement.md) |
+| 2026-04-06 | 003 | 영양분석 통합 파이프라인 구현 (Gemini 정규화→병렬 식약처 검색→AI fallback + is_estimated 표시) | [상세](devlog/2026-04-06/003-nutrition-pipeline-refactor.md) |
+| 2026-04-07 | 001 | 오늘의 식단 green 마커 표시 통일, 저녁추천 대체메뉴 제외, 음식별 상세 로깅, 백김치/배추김치 분리, 캘린더/영양분석 UI 수정 | [상세](devlog/2026-04-07/001-today-meal-green-ui-fixes.md) |
+| 2026-04-07 | 002 | 대체식 선택 DB 테이블(meal_substitute_selections) 및 Peewee Model 생성 | [상세](devlog/2026-04-07/002-substitute-selections-table.md) |
+| 2026-04-07 | 003 | 교사/원장 날짜별 식단 대체식 체크박스 UI 및 toggle API 구현 | [상세](devlog/2026-04-07/003-meal-substitute-checkbox.md) |
+| 2026-04-07 | 004 | 학부모 페이지 교사 대체식 선택 반영 + 자녀 연령별 메뉴 자동분기 | [상세](devlog/2026-04-07/004-parent-substitute-age-branch.md) |
+| 2026-04-07 | 005 | 저녁추천 영양분석을 교사 대체식 선택 반영한 실제 제공 메뉴 기반으로 변경 | [상세](devlog/2026-04-07/005-dinner-actual-menu-analysis.md) |
+| 2026-04-07 | 006 | 알레르기 음식명 표시, 교사뷰 연결메뉴 분리, 저녁추천 에러 상세+콘솔 로깅 | [상세](devlog/2026-04-07/006-bugfix-allergy-dishes-age-split-dinner-logging.md) || 2026-04-08 | 001 | 회원가입 페이지 역할 선택 UI를 토글 버튼 그룹으로 변경 | [상세](devlog/2026-04-08/001-signup-role-toggle.md) |
+| 2026-04-08 | 002 | 서버 참여 페이지 - 기기별 서버 코드 기억 및 카드 클릭 입장 기능 | [상세](devlog/2026-04-08/002-server-join-remember.md) |
+| 2026-04-08 | 003 | 식단표 페이지 구조 개편 (캘린더 직접 표시 + 영양분석 통합) | [상세](devlog/2026-04-08/003-meal-page-restructure.md) |
+| 2026-04-08 | 004 | 식단표 사진 업로드 디자인 변경 (하단 카드형) | [상세](devlog/2026-04-08/004-photo-upload-card-design.md) |
+| 2026-04-08 | 005 | 어린이집명/반 표시 카드형 디자인 개선 | [상세](devlog/2026-04-08/005-school-name-design.md) |
+| 2026-04-08 | 006 | 가상 포트 실행 테스트 (전체 페이지 200 확인) | [상세](devlog/2026-04-08/006-virtual-port-test.md) |

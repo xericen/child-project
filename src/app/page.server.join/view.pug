@@ -6,7 +6,19 @@
       br
       | 참여하기
 
-    p.subtitle 원장님에게 받은 서버 회원번호를 입력하세요.
+    .saved-servers(*ngIf="savedServers.length > 0")
+      p.saved-title 이전에 참여한 어린이집
+      .server-card(*ngFor="let s of savedServers; let i = index",
+        '(click)'="joinSavedServer(s)")
+        .server-card-icon 🏫
+        .server-card-info
+          .server-card-name {{ s.name }}
+          .server-card-code {{ s.code }}
+        button.server-card-remove(type="button",
+          '(click)'="removeSavedServer($event, i)") ✕
+
+      .divider-row
+        .divider-line
 
     .form-group
       label.form-label 서버 회원번호

@@ -126,3 +126,103 @@
   cursor: pointer;
   font-weight: 600;
 }
+
+// 저장된 서버 카드
+.saved-servers {
+  margin-bottom: 24px;
+}
+
+.saved-title {
+  font-size: 0.8rem;
+  color: #999;
+  margin-bottom: 10px;
+  font-weight: 600;
+}
+
+.server-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1.5px solid #e0e3f5;
+  border-radius: 14px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: #fafbff;
+
+  &:hover {
+    border-color: #5b6ef5;
+    background: #f0f2ff;
+    box-shadow: 0 2px 8px rgba(91, 110, 245, 0.1);
+  }
+}
+
+.server-card-icon {
+  font-size: 1.6rem;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #eef0fb;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+.server-card-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.server-card-name {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #333;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.server-card-code {
+  font-size: 0.75rem;
+  color: #aaa;
+  letter-spacing: 1px;
+  margin-top: 2px;
+}
+
+.server-card-remove {
+  background: none;
+  border: none;
+  color: #ccc;
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  transition: all 0.2s;
+
+  &:hover {
+    color: #f55b5b;
+    background: #fff0f0;
+  }
+}
+
+.divider-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 20px 0;
+}
+
+.divider-line {
+  flex: 1;
+  height: 1px;
+  background: #e0e3f5;
+}
+
+.divider-text {
+  font-size: 0.78rem;
+  color: #bbb;
+  white-space: nowrap;
+}

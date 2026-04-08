@@ -6,13 +6,16 @@ class GeminiHelper:
         config = wiz.config("ai")
         self._api_key = config.gemini.api_key
         self._model_name = config.gemini.model
-        self._client = genai.Client(api_key=self._api_key)
+
+    def _get_client(self):
+        return genai.Client(api_key=self._api_key)
 
     def ask(self, prompt, system_instruction=None):
         config = None
         if system_instruction:
             config = {"system_instruction": system_instruction}
-        response = self._client.models.generate_content(
+        client = self._get_client()
+        response = client.models.generate_content(
             model=self._model_name,
             contents=prompt,
             config=config

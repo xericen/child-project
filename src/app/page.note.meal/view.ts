@@ -7,9 +7,10 @@ export class Component implements OnInit {
     @ViewChild('hwpFileInput') hwpFileInput: ElementRef;
 
     role: string = '';
-    mode: string = 'menu';
-    selectedDate: string = '';
-    selectedMonth: string = '';
+    mode: string = 'calendar';
+    calendarTab: string = 'calendar';
+    selectedDate: string = new Date().toISOString().substring(0, 10);
+    selectedMonth: string = new Date().toISOString().substring(0, 7);
     meals: any[] = [];
     monthlyMeals: any = {};
     calendarDays: any[] = [];
@@ -67,11 +68,28 @@ export class Component implements OnInit {
     targetKcal: number = 420;
     ageNutrition: any[] = [];
     selectedAge: string = '1~2세';
+    dailyCaloriesAll: any = {};  // 연령별 전체: {'1~2세': {date: kcal}, '3~5세': {date: kcal}}
 
     // 부모용 맞춤 통계
     parentData: any = {};
     parentChildren: any[] = [];
     allergyExpanded: boolean = false;
+
+    // 대체식 토글 로딩
+    substituteLoading: boolean = false;
+
+    // 영양분석 대시보드 (nutrition page 통합)
+    nutritionData: any = {};
+    nutritionLoading: boolean = false;
+    nutritionNutrientList: any[] = [];
+    nutritionDeficients: any[] = [];
+    nutritionSummary: string = '';
+    nutritionCachedAt: string = '';
+    nutritionEstimatedCount: number = 0;
+    nutritionTotalMenuCount: number = 0;
+
+    // 날짜 이동 요청 취소용
+    private _dailyRequestId: number = 0;
 
     constructor(public service: Service, public router: Router) {}
 
@@ -85,6 +103,54 @@ export class Component implements OnInit {
         this.selectedDate = this.formatDate(now);
         this.selectedMonth = this.selectedDate.substring(0, 7);
         await this.loadMealFiles();
+        await this.loadMonthly();
+        await this.service.render();
+    }
+
+    public get monthLabel(): string {
+        const [y, m] = this.selectedMonth.split('-').map(Number);
+        return `${y}년 ${m}월`;
+    }
+
+    public get totalFileCount(): number {
+        const currentFiles = this.monthFiles.find((g: any) => g.month === this.selectedMonth);
+        return currentFiles ? (currentFiles.files || []).length : 0;
+    }
+
+    public get todayStr(): string {
+        return this.formatDate(new Date());
+    }
+
+    public get currentMonthFiles(): any[] {
+        const group = this.monthFiles.find((g: any) => g.month === this.selectedMonth);
+        return group ? (group.files || []) : [];
+    }
+
+    public get groupedMonthFiles(): any[] {
+        const files = this.currentMonthFiles;
+        const groups: any = {};
+        for (const file of files) {
+            const dateStr = (file.created_at || '').substring(0, 10);
+            if (!groups[dateStr]) groups[dateStr] = [];
+            groups[dateStr].push(file);
+        }
+        return Object.keys(groups).sort().reverse().map(date => {
+            const [, m, d] = date.split('-').map(Number);
+            return {
+                date,
+                label: `${m}월 ${d}일`,
+                files: groups[date]
+            };
+        });
+    }
+
+    public fileTime(file: any): string {
+        const ca = file.created_at || '';
+        return ca.length >= 16 ? ca.substring(11, 16) : ca;
+    }
+
+    public async switchTab(tab: string) {
+        this.calendarTab = tab;
         await this.service.render();
     }
 
@@ -96,63 +162,69 @@ export class Component implements OnInit {
     }
 
     public async goBack() {
-        if (this.mode !== 'menu') {
-            this.mode = 'menu';
+        if (this.mode !== 'calendar') {
+            this.mode = 'calendar';
             this.showForm = false;
             this.editingMealId = null;
+            await this.loadMonthly();
             await this.service.render();
             return;
         }
         this.router.navigate(['/note']);
     }
 
-    public async goMonthly() {
-        this.mode = 'monthly';
-        this.showForm = false;
-        await this.loadMonthly();
-        await this.service.render();
-    }
-
-    public goNutritionDashboard() {
-        this.router.navigateByUrl('/note/meal/nutrition');
-    }
-
-    public async goDaily() {
-        this.mode = 'daily';
-        this.showForm = false;
-        this.editingMealId = null;
-        await this.loadDaily();
-        await this.service.render();
-    }
-
-    public async goStats() {
-        this.mode = 'stats';
+    public async goNutrition() {
+        this.mode = 'nutrition';
         this.statsLoading = true;
-        this.aiLoading = false;
-        this.aiError = '';
-        this.aiData = {};
-        this.nutrientList = [];
-        this.deficientNutrients = [];
-        this.aiSummary = '';
         this.parentChildren = [];
+        this.deficientNutrients = [];
         await this.service.render();
         try {
-            await this.loadStats();
-            await this.loadParentStats();
-            this.statsLoading = false;
-            await this.service.render();
-            if (this.statsData.total_meals > 0) {
-                this.aiLoading = true;
-                await this.service.render();
-                await this.loadAiAnalysis();
-            }
+            await Promise.all([this.loadStats(), this.loadParentStats()]);
         } catch (e) {
-            console.error('goStats error:', e);
+            console.error('goNutrition error:', e);
         } finally {
             this.statsLoading = false;
-            this.aiLoading = false;
             await this.service.render();
         }
+    }
+
+    private async loadNutritionDashboard(refresh: boolean = false) {
+        try {
+            const formData = new FormData();
+            formData.append('month', this.selectedMonth);
+            if (refresh) formData.append('refresh', 'true');
+            const response = await fetch('/wiz/api/page.note.meal.nutrition/get_dashboard', {
+                method: 'POST',
+                body: formData
+            });
+            const res = await response.json();
+            if (res.code === 200) {
+                this.nutritionData = res.data;
+                this.nutritionSummary = res.data.summary || '';
+                this.nutritionCachedAt = res.data.cached_at || '';
+                this.nutritionEstimatedCount = res.data.estimated_count || 0;
+                this.nutritionTotalMenuCount = res.data.total_menu_count || 0;
+                this.nutritionDeficients = res.data.deficient_nutrients || [];
+                const nutrients = res.data.nutrients || {};
+                this.nutritionNutrientList = Object.entries(nutrients).map(([name, val]: [string, any]) => ({
+                    name,
+                    percent: Math.min(val.percent || 0, 100),
+                    target: val.target || '',
+                    avgDaily: val.avg_daily || 0,
+                    unit: val.unit || '',
+                    sufficient: (val.percent || 0) >= 80
+                }));
+            }
+        } catch (e) {
+            console.error('loadNutritionDashboard error:', e);
+        }
+    }
+
+    public getNutrientColor(percent: number): string {
+        if (percent >= 80) return '#22c55e';
+        if (percent >= 60) return '#f59e0b';
+        return '#ef4444';
     }
 
     private async loadMonthly() {
@@ -177,17 +249,19 @@ export class Component implements OnInit {
         const lastDate = new Date(y, m, 0).getDate();
         this.calendarDays = [];
         for (let i = 0; i < firstDay; i++) {
-            this.calendarDays.push({ day: '', hasMeal: false });
+            this.calendarDays.push({ day: '', hasMeal: false, dow: i });
         }
         for (let d = 1; d <= lastDate; d++) {
             const dateStr = `${this.selectedMonth}-${String(d).padStart(2, '0')}`;
             const dayMeals = this.monthlyMeals[dateStr] || [];
             const theme = dayMeals.length > 0 ? (dayMeals[0].theme || '') : '';
+            const dow = (firstDay + d - 1) % 7;
             this.calendarDays.push({
                 day: d,
                 date: dateStr,
                 hasMeal: dayMeals.length > 0,
-                theme: theme
+                theme: theme,
+                dow: dow
             });
         }
     }
@@ -203,7 +277,9 @@ export class Component implements OnInit {
     }
 
     private async loadDaily() {
+        const reqId = ++this._dailyRequestId;
         const res = await wiz.call("get_daily", { date: this.selectedDate });
+        if (reqId !== this._dailyRequestId) return; // 새 요청이 들어왔으면 무시
         if (res.code === 200) {
             this.meals = res.data.meals || [];
         }
@@ -214,6 +290,7 @@ export class Component implements OnInit {
         const d = new Date(y, m - 2, 1);
         this.selectedMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
         await this.loadMonthly();
+        await this.loadMealFiles();
         await this.service.render();
     }
 
@@ -222,6 +299,7 @@ export class Component implements OnInit {
         const d = new Date(y, m, 1);
         this.selectedMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
         await this.loadMonthly();
+        await this.loadMealFiles();
         await this.service.render();
     }
 
@@ -230,6 +308,8 @@ export class Component implements OnInit {
         d.setDate(d.getDate() - 1);
         this.selectedDate = this.formatDate(d);
         this.editingMealId = null;
+        this.meals = [];
+        await this.service.render();
         await this.loadDaily();
         await this.service.render();
     }
@@ -239,6 +319,8 @@ export class Component implements OnInit {
         d.setDate(d.getDate() + 1);
         this.selectedDate = this.formatDate(d);
         this.editingMealId = null;
+        this.meals = [];
+        await this.service.render();
         await this.loadDaily();
         await this.service.render();
     }
@@ -276,6 +358,12 @@ export class Component implements OnInit {
 
     public formatMealContent(content: string): string {
         if (!content) return '';
+        // 연령별 연결 메뉴 분리 표시 (백김치배추김치 → 백김치(1~2세) / 배추김치(3~5세))
+        const agePairs: [string, string][] = [['백김치', '배추김치']];
+        for (const [young, old] of agePairs) {
+            const pattern = new RegExp(young + '\\s*' + old, 'g');
+            content = content.replace(pattern, young + '(1~2\uc138)\n' + old + '(3~5\uc138)');
+        }
         // {{green:텍스트}} 마커를 <span class="green-text">텍스트</span>으로 변환
         // XSS 방지: 마커 외부의 텍스트는 이스케이프
         const parts = content.split(/(\{\{green:.*?\}\})/g);
@@ -287,6 +375,67 @@ export class Component implements OnInit {
             }
             return part.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         }).join('').replace(/\n/g, '<br>');
+    }
+
+    public parseMealLines(content: string): any[] {
+        if (!content) return [];
+        // 교사/원장 뷰: 연결 메뉴 분리 표시 (백김치배추김치 → 두 줄)
+        if (this.role === 'teacher' || this.role === 'director') {
+            const agePairs: [string, string][] = [['백김치', '배추김치']];
+            for (const [young, old] of agePairs) {
+                const pattern = new RegExp(young + '\\s*' + old, 'g');
+                content = content.replace(pattern, young + '(1~2세)\n' + old + '(3~5세)');
+            }
+        }
+        const lines = content.split('\n');
+        const result: any[] = [];
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            const gm = line.match(/\{\{green:(.*?)\}\}(.*)/);
+            if (gm) {
+                // green 마커 줄 → 이전 줄이 원본
+                const sub = gm[1].trim();
+                const remainder = gm[2].trim();
+                if (result.length > 0) {
+                    result[result.length - 1].hasSubstitute = true;
+                    result[result.length - 1].substituteItem = sub;
+                }
+                if (remainder) {
+                    result.push({ text: remainder, isGreen: false, hasSubstitute: false, substituteItem: '' });
+                }
+            } else {
+                result.push({ text: line.trim(), isGreen: false, hasSubstitute: false, substituteItem: '' });
+            }
+        }
+        return result.filter(r => r.text);
+    }
+
+    public isSubstituteSelected(meal: any, originalItem: string): boolean {
+        if (!meal.substitute_pairs) return false;
+        const pair = meal.substitute_pairs.find((p: any) => p.original === originalItem);
+        return pair ? pair.is_selected : false;
+    }
+
+    public async toggleSubstitute(meal: any, originalItem: string, substituteItem: string) {
+        if (this.substituteLoading) return;
+        this.substituteLoading = true;
+        const pair = meal.substitute_pairs?.find((p: any) => p.original === originalItem);
+        const newState = pair ? !pair.is_selected : true;
+        try {
+            const res = await wiz.call("toggle_substitute", {
+                meal_id: meal.id,
+                original_item: originalItem,
+                substitute_item: substituteItem,
+                is_selected: String(newState)
+            });
+            if (res.code === 200 && pair) {
+                pair.is_selected = newState;
+            }
+        } catch (e) {
+            console.error('toggleSubstitute error:', e);
+        }
+        this.substituteLoading = false;
+        await this.service.render();
     }
 
     public async saveMeal() {
@@ -382,6 +531,7 @@ export class Component implements OnInit {
                 const month = String(res.data.month).padStart(2, '0');
                 this.selectedMonth = `${year}-${month}`;
                 await this.loadMonthly();
+                await this.loadMealFiles();
             } else {
                 alert(res.data?.message || '식단표 파싱에 실패했습니다.');
             }
@@ -403,6 +553,7 @@ export class Component implements OnInit {
         const res = await wiz.call("delete_month_hwp", { month: this.selectedMonth });
         if (res.code === 200) {
             await this.loadMonthly();
+            await this.loadMealFiles();
         }
         await this.service.render();
     }
@@ -459,7 +610,7 @@ export class Component implements OnInit {
         if (!this.selectedMealFile) return;
         const formData = new FormData();
         formData.append('file', this.selectedMealFile);
-        formData.append('target_month', this.uploadTargetMonth);
+        formData.append('target_month', this.selectedMonth);
 
         const response = await fetch('/wiz/api/page.note.meal/upload_meal_file', {
             method: 'POST',
@@ -503,6 +654,7 @@ export class Component implements OnInit {
             const sel = this.ageNutrition.find((a: any) => a.label === this.selectedAge);
             this.targetKcal = sel ? sel.kcal : (res.data.target_kcal || 900);
             this.dailyCaloriesCache = res.data.daily_calories || {};
+            this.dailyCaloriesAll = res.data.daily_calories_all || {};
             this.buildCalorieCalendar(this.dailyCaloriesCache);
         }
     }
@@ -511,7 +663,14 @@ export class Component implements OnInit {
         this.selectedAge = label;
         const sel = this.ageNutrition.find((a: any) => a.label === label);
         if (sel) this.targetKcal = sel.kcal;
-        await this.loadStats();
+        // 선택된 연령대의 칼로리로 캘린더 재빌드
+        const ageCals = this.dailyCaloriesAll[label] || {};
+        const merged = { ...this.dailyCaloriesCache };
+        // 선택된 연령의 데이터로 덮어쓰기
+        for (const [date, kcal] of Object.entries(ageCals)) {
+            merged[date] = kcal;
+        }
+        this.buildCalorieCalendar(ageCals);
         await this.service.render();
     }
 
@@ -544,7 +703,7 @@ export class Component implements OnInit {
 
         this.statsCalendar = [];
         for (let i = 0; i < firstDay; i++) {
-            this.statsCalendar.push({ day: 0, kcal: 0, pct: 0, status: '' });
+            this.statsCalendar.push({ day: 0, kcal: 0, pct: 0, status: '', ageKcals: [] });
         }
 
         let sufficient = 0;
@@ -563,7 +722,16 @@ export class Component implements OnInit {
                     deficient++;
                 }
             }
-            this.statsCalendar.push({ day: d, kcal, pct, status, date: dateStr });
+            // 연령별 kcal 수집
+            const ageKcals: any[] = [];
+            for (const age of this.ageNutrition) {
+                const ageCals = this.dailyCaloriesAll[age.label] || {};
+                const ak = ageCals[dateStr] || 0;
+                if (ak > 0) {
+                    ageKcals.push({ label: age.label, kcal: ak });
+                }
+            }
+            this.statsCalendar.push({ day: d, kcal, pct, status, date: dateStr, ageKcals });
         }
         this.calorieSufficient = sufficient;
         this.calorieDeficient = deficient;
@@ -640,28 +808,15 @@ export class Component implements OnInit {
 
     private async reloadStats() {
         this.statsLoading = true;
-        this.aiLoading = false;
-        this.aiError = '';
-        this.aiData = {};
-        this.nutrientList = [];
-        this.deficientNutrients = [];
-        this.aiSummary = '';
         this.statsCalendar = [];
+        this.deficientNutrients = [];
         await this.service.render();
         try {
-            await this.loadStats();
-            this.statsLoading = false;
-            await this.service.render();
-            if (this.statsData.total_meals > 0) {
-                this.aiLoading = true;
-                await this.service.render();
-                await this.loadAiAnalysis();
-            }
+            await Promise.all([this.loadStats(), this.loadParentStats()]);
         } catch (e) {
             console.error('reloadStats error:', e);
         } finally {
             this.statsLoading = false;
-            this.aiLoading = false;
             await this.service.render();
         }
     }

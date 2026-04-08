@@ -103,6 +103,71 @@ Children = wiz.model("db/childcheck/children")
 ChildAllergies = wiz.model("db/childcheck/child_allergies")
 AllergyCategories = wiz.model("db/childcheck/allergy_categories")
 ServerMembers = wiz.model("db/login_db/server_members")
+MealSubstituteSelections = wiz.model("db/childcheck/meal_substitute_selections")
+
+_GREEN_RE = re.compile(r'\{\{green:(.*?)\}\}')
+
+def _parse_substitute_pairs(content):
+    """content에서 (original, substitute) 쌍을 추출한다.
+    green 마커의 바로 직전 줄이 원본, green 안이 대체식."""
+    if not content:
+        return []
+    lines = content.split('\n')
+    pairs = []
+    prev_line = None
+    for line in lines:
+        m = _GREEN_RE.search(line)
+        if m and prev_line is not None:
+            original = prev_line.strip()
+            substitute = m.group(1).strip()
+            if original and substitute:
+                pairs.append({'original': original, 'substitute': substitute})
+        # green이 아닌 순수 텍스트 줄만 prev_line으로 저장
+        clean = _GREEN_RE.sub('', line).strip()
+        if clean:
+            prev_line = clean
+        elif not m:
+            prev_line = line.strip()
+    return pairs
+
+_AGE_MENU_PAIRS = [('백김치', '배추김치')]
+
+def _apply_parent_content(content, meal_id, sub_selections, age_group):
+    """학부모용 content 변환: 교사 대체식 선택 반영 + 연령별 분기."""
+    if not content:
+        return content
+
+    # 1) green 마커 처리: 교사 선택 기반
+    lines = content.split('\n')
+    result = []
+    prev_line = None
+    for line in lines:
+        m = _GREEN_RE.search(line)
+        if m:
+            green_text = re.search(r'\{\{green:(.*?)\}\}', line).group(1).strip()
+            remainder = _GREEN_RE.sub('', line).strip()
+            key = f"{meal_id}_{prev_line.strip()}" if prev_line else ""
+            is_selected = sub_selections.get(key, False)
+            if is_selected:
+                if result and prev_line is not None:
+                    result.pop()
+                result.append(green_text)
+            if remainder:
+                result.append(remainder)
+            prev_line = remainder if remainder else prev_line
+        else:
+            result.append(line)
+            prev_line = line
+    content = '\n'.join(result)
+
+    # 2) 연결 메뉴 분리 (백김치배추김치 → 연령별)
+    for young, old in _AGE_MENU_PAIRS:
+        young_pat = r'\s*'.join(re.escape(ch) for ch in young)
+        old_pat = r'\s*'.join(re.escape(ch) for ch in old)
+        pattern = young_pat + r'\s*' + old_pat
+        content = re.sub(pattern, young if age_group == '1~2세' else old, content)
+
+    return content
 
 def _get_server_id():
     server_id = wiz.session.get("server_id") or wiz.session.get("join_server_id")
@@ -126,7 +191,18 @@ def _build_caution_food_map():
     return mapping
 
 def _get_child_allergy_numbers():
-    """현재 로그인 학부모의 자녀 알레르기 번호 집합을 반환"""
+    """현재 로그인 학부모의 자녀 알레르기 번호 집합을 반환 (세션 캐시 사용)"""
+    # 세션 캐시 확인 (5분간 유효)
+    import time as _time
+    cached = wiz.session.get("_allergy_cache")
+    if cached:
+        try:
+            cache_data = json.loads(cached) if isinstance(cached, str) else cached
+            if _time.time() - cache_data.get('ts', 0) < 300:
+                return set(cache_data.get('nums', []))
+        except Exception:
+            pass
+
     allergy_nums = set()
     try:
         user_id = int(wiz.session.get("id"))
@@ -154,6 +230,12 @@ def _get_child_allergy_numbers():
                                     allergy_nums.update(ai_nums)
                 elif atype in ALLERGY_TYPE_TO_NUMBERS:
                     allergy_nums.update(ALLERGY_TYPE_TO_NUMBERS[atype])
+    except Exception:
+        pass
+
+    # 세션에 캐시 저장
+    try:
+        wiz.session.set(_allergy_cache=json.dumps({'nums': sorted(allergy_nums), 'ts': _time.time()}))
     except Exception:
         pass
     return allergy_nums
@@ -387,9 +469,23 @@ JSON 형식으로만 응답: {{"음식명": [번호1, 번호2], "음식명2": []
 
 def _ai_map_other_allergy(other_detail):
     """기타 알레르기 키워드가 표준 19종 중 어디에 해당하는지 AI로 분석.
-    ALLERGY_TYPE_TO_NUMBERS에 없는 키워드일 때 사용."""
+    ALLERGY_TYPE_TO_NUMBERS에 없는 키워드일 때 사용. 결과를 파일 캐시."""
     if not other_detail or not other_detail.strip():
         return []
+
+    # 파일 캐시 확인
+    import hashlib
+    cache_key = hashlib.md5(other_detail.strip().encode()).hexdigest()
+    cache_dir = wiz.project.fs("data", "cache", "allergy_map")
+    cache_file = f"{cache_key}.json"
+    try:
+        if cache_dir.exists(cache_file):
+            cached = cache_dir.read.json(cache_file, default=None)
+            if cached is not None and isinstance(cached, list):
+                return cached
+    except Exception:
+        pass
+
     allergy_list = ", ".join([f"{v}({k}번)" for k, v in ALLERGY_MAP.items()])
     try:
         gemini = wiz.model("gemini")
@@ -405,10 +501,66 @@ JSON 형식: {{"numbers": [10]}}"""
 
         result = gemini.ask_json(prompt, system_instruction="알레르기 전문가입니다. JSON만 응답하세요.")
         if isinstance(result, dict) and 'numbers' in result:
-            return [int(n) for n in result['numbers'] if isinstance(n, (int, float)) and 1 <= int(n) <= 19]
+            nums = [int(n) for n in result['numbers'] if isinstance(n, (int, float)) and 1 <= int(n) <= 19]
+            # 캐시 저장
+            try:
+                cache_dir.makedirs("")
+                cache_dir.write.json(cache_file, nums)
+            except Exception:
+                pass
+            return nums
     except Exception:
         pass
     return []
+
+def _get_server_allergy_numbers(server_id):
+    """교사/원장용: 서버 내 모든 자녀의 알레르기 번호 합산 (세션 캐시 사용, 5분)"""
+    import time as _time
+    cache_key = "_server_allergy_cache"
+    cached = wiz.session.get(cache_key)
+    if cached:
+        try:
+            cache_data = json.loads(cached) if isinstance(cached, str) else cached
+            if _time.time() - cache_data.get('ts', 0) < 300:
+                return set(cache_data.get('nums', []))
+        except Exception:
+            pass
+
+    allergy_nums = set()
+    try:
+        parent_ids = [sm.user_id for sm in ServerMembers.select(ServerMembers.user_id).where(
+            (ServerMembers.server_id == server_id) & (ServerMembers.role == "parent")
+        )]
+        if parent_ids:
+            all_children = list(Children.select().where(Children.user_id.in_(parent_ids)))
+            child_ids = [c.id for c in all_children]
+            if child_ids:
+                for ca in ChildAllergies.select().where(ChildAllergies.child_id.in_(child_ids)):
+                    if ca.allergy_type == '기타' and ca.other_detail:
+                        detail = ca.other_detail.strip()
+                        found = ALLERGY_TYPE_TO_NUMBERS.get(detail, [])
+                        if found:
+                            allergy_nums.update(found)
+                        else:
+                            for part in re.split(r'[,\s/]+', detail):
+                                part = part.strip()
+                                if part:
+                                    nums = ALLERGY_TYPE_TO_NUMBERS.get(part, [])
+                                    if nums:
+                                        allergy_nums.update(nums)
+                                    else:
+                                        ai_nums = _ai_map_other_allergy(part)
+                                        allergy_nums.update(ai_nums)
+                    elif ca.allergy_type in ALLERGY_TYPE_TO_NUMBERS:
+                        allergy_nums.update(ALLERGY_TYPE_TO_NUMBERS[ca.allergy_type])
+    except Exception:
+        pass
+
+    try:
+        wiz.session.set(**{cache_key: json.dumps({'nums': sorted(allergy_nums), 'ts': _time.time()})})
+    except Exception:
+        pass
+    return allergy_nums
 
 def get_role():
     role = wiz.session.get("role")
@@ -466,40 +618,12 @@ def get_daily():
     if not date_str:
         date_str = datetime.date.today().strftime("%Y-%m-%d")
 
-    # 모든 역할에 대해 알레르기 번호 조회
+    # 모든 역할에 대해 알레르기 번호 조회 (세션 캐시 사용)
     child_allergy_nums = set()
     if role == 'parent':
         child_allergy_nums = _get_child_allergy_numbers()
     elif role in ('teacher', 'director'):
-        # 교사/원장: 서버 내 모든 자녀의 알레르기 번호를 합산
-        try:
-            parent_ids = [sm.user_id for sm in ServerMembers.select(ServerMembers.user_id).where(
-                (ServerMembers.server_id == server_id) & (ServerMembers.role == "parent")
-            )]
-            if parent_ids:
-                all_children = list(Children.select().where(Children.user_id.in_(parent_ids)))
-                child_ids = [c.id for c in all_children]
-                if child_ids:
-                    for ca in ChildAllergies.select().where(ChildAllergies.child_id.in_(child_ids)):
-                        if ca.allergy_type == '기타' and ca.other_detail:
-                            detail = ca.other_detail.strip()
-                            found = ALLERGY_TYPE_TO_NUMBERS.get(detail, [])
-                            if found:
-                                child_allergy_nums.update(found)
-                            else:
-                                for part in re.split(r'[,\s/]+', detail):
-                                    part = part.strip()
-                                    if part:
-                                        nums = ALLERGY_TYPE_TO_NUMBERS.get(part, [])
-                                        if nums:
-                                            child_allergy_nums.update(nums)
-                                        else:
-                                            ai_nums = _ai_map_other_allergy(part)
-                                            child_allergy_nums.update(ai_nums)
-                        elif ca.allergy_type in ALLERGY_TYPE_TO_NUMBERS:
-                            child_allergy_nums.update(ALLERGY_TYPE_TO_NUMBERS[ca.allergy_type])
-        except Exception:
-            pass
+        child_allergy_nums = _get_server_allergy_numbers(server_id)
 
     meals = []
     try:
@@ -561,7 +685,78 @@ def get_daily():
     except Exception:
         pass
 
+    # 대체식 선택 상태 조회
+    meal_ids = [m['id'] for m in meals]
+    sub_selections = {}
+    if meal_ids:
+        try:
+            for sel in MealSubstituteSelections.select().where(MealSubstituteSelections.meal_id.in_(meal_ids)):
+                key = f"{sel.meal_id}_{sel.original_item}"
+                sub_selections[key] = bool(sel.is_selected)
+        except Exception:
+            pass
+
+    # 각 meal에 substitute_pairs와 선택 상태 추가
+    for meal in meals:
+        pairs = _parse_substitute_pairs(meal['content'])
+        for p in pairs:
+            key = f"{meal['id']}_{p['original']}"
+            p['is_selected'] = sub_selections.get(key, False)
+        meal['substitute_pairs'] = pairs
+
+    # 학부모: 교사 대체식 선택 반영 + 연령별 분기 (content 변환)
+    if role == 'parent':
+        child_age = 3
+        try:
+            user_id = wiz.session.get("id")
+            if user_id:
+                today_dt = datetime.date.today()
+                children = list(Children.select().where(Children.user_id == int(user_id)))
+                if children:
+                    c = children[0]
+                    if c.birthdate:
+                        child_age = today_dt.year - c.birthdate.year
+                        if (today_dt.month, today_dt.day) < (c.birthdate.month, c.birthdate.day):
+                            child_age -= 1
+        except Exception:
+            pass
+        age_group = '1~2세' if child_age < 3 else '3~5세'
+        for meal in meals:
+            meal['content'] = _apply_parent_content(meal['content'], meal['id'], sub_selections, age_group)
+
     wiz.response.status(200, meals=meals)
+
+def toggle_substitute():
+    role = wiz.session.get("role")
+    if role not in ('teacher', 'director'):
+        wiz.response.status(403, message="권한이 없습니다.")
+
+    meal_id = int(wiz.request.query("meal_id", True))
+    original_item = wiz.request.query("original_item", True)
+    substitute_item = wiz.request.query("substitute_item", True)
+    is_selected = wiz.request.query("is_selected", "false") == "true"
+    user_id = wiz.session.get("id")
+
+    try:
+        sel = MealSubstituteSelections.get(
+            (MealSubstituteSelections.meal_id == meal_id) &
+            (MealSubstituteSelections.original_item == original_item)
+        )
+        sel.is_selected = is_selected
+        sel.substitute_item = substitute_item
+        sel.selected_by = int(user_id) if user_id else None
+        sel.save()
+    except MealSubstituteSelections.DoesNotExist:
+        MealSubstituteSelections.create(
+            meal_id=meal_id,
+            original_item=original_item,
+            substitute_item=substitute_item,
+            is_selected=is_selected,
+            selected_by=int(user_id) if user_id else None
+        )
+    except Exception as e:
+        wiz.response.status(500, message=str(e))
+    wiz.response.status(200)
 
 def save_meal():
     role = wiz.session.get("role")
@@ -1506,6 +1701,7 @@ def get_stats():
     # 일자별 식단 수집
     daily_meals = {}
     daily_calories = {}
+    daily_calories_all = {}  # 연령별: {'1~2세': {date: kcal}, '3~5세': {date: kcal}}
     total_meals = 0
 
     try:
@@ -1528,44 +1724,20 @@ def get_stats():
                 daily_calories[date_str] = row.kcal_35
             elif row.kcal and row.kcal > 0:
                 daily_calories[date_str] = row.kcal
+            # 모든 연령대 칼로리 수집
+            if row.kcal and row.kcal > 0:
+                if '1~2세' not in daily_calories_all:
+                    daily_calories_all['1~2세'] = {}
+                daily_calories_all['1~2세'][date_str] = row.kcal
+            if row.kcal_35 and row.kcal_35 > 0:
+                if '3~5세' not in daily_calories_all:
+                    daily_calories_all['3~5세'] = {}
+                daily_calories_all['3~5세'][date_str] = row.kcal_35
     except Exception as e:
         wiz.response.status(500, message=str(e))
 
-    # 통합 스케일링으로 일별 칼로리 보완 (병렬)
-    api_daily_calories = {}
-    try:
-        nutrition_api = wiz.model("nutrition_api")
-        from concurrent.futures import ThreadPoolExecutor
-
-        # DB에 kcal 없는 날의 모든 끼니를 병렬 조회
-        missing_dates = {d: dm for d, dm in daily_meals.items() if d not in daily_calories}
-        all_tasks = []
-        for date_str, day_meals in missing_dates.items():
-            for m in day_meals:
-                all_tasks.append((date_str, m['meal_type'], m['content']))
-
-        results_by_date = {d: 0 for d in missing_dates}
-        if all_tasks:
-            with ThreadPoolExecutor(max_workers=8) as executor:
-                futures = {executor.submit(nutrition_api.search_meal, content, selected_age): (date_str, meal_type) for date_str, meal_type, content in all_tasks}
-                for future in futures:
-                    date_str, meal_type = futures[future]
-                    try:
-                        meal_result = future.result()
-                        scaled = nutrition_api.compute_scaled_nutrients(meal_result, meal_type, selected_age)
-                        results_by_date[date_str] += scaled.get('calories', 0)
-                    except Exception:
-                        pass
-
-            for date_str, kcal in results_by_date.items():
-                if kcal > 0:
-                    api_daily_calories[date_str] = round(kcal)
-    except Exception:
-        pass
-
-    # DB kcal 우선 + API kcal 보완
-    merged_calories = dict(api_daily_calories)
-    merged_calories.update(daily_calories)  # DB kcal이 우선
+    # DB kcal 우선 (외부 API 보완 스킵 — 속도 우선)
+    merged_calories = dict(daily_calories)
 
     # shared targets 참조
     nutrition_api = wiz.model("nutrition_api")
@@ -1588,6 +1760,7 @@ def get_stats():
         total_days=len(daily_meals),
         daily_meals=daily_meals,
         daily_calories=merged_calories,
+        daily_calories_all=daily_calories_all,
         target_kcal=target_kcal,
         age_nutrition=AGE_NUTRITION,
         ages=list(_TARGETS.keys()),

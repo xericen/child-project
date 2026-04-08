@@ -4,66 +4,85 @@
     .dash-header
       button.btn-back('(click)'="goBack()") ← 돌아가기
       h1.dash-title 📊 급식 영양분석
-      button.btn-refresh('(click)'="refresh()", *ngIf="!loading") 🔄
 
     //- 월 네비게이션
     .month-nav
       span.nav-arrow('(click)'="prevMonth()") ◀
-      span.month-title {{ selectedMonth }}
+      span.month-title {{ monthLabel }}
       span.nav-arrow('(click)'="nextMonth()") ▶
 
     //- 로딩
     div(*ngIf="loading")
       .loading-wrap
         .loading-spinner
-        p 영양 분석 중...
+        p 데이터 불러오는 중...
 
     //- 데이터 없음
-    div(*ngIf="!loading && totalDays === 0")
+    div(*ngIf="!loading && !statsData.total_meals")
       .empty-msg
         p 📭 해당 월 식단 데이터가 없습니다.
         p.sub-msg 식단표를 먼저 업로드해주세요.
 
     //- 대시보드 메인
-    div(*ngIf="!loading && totalDays > 0")
+    div(*ngIf="!loading && statsData.total_meals")
 
-      //- 1. AI 종합 평가
-      .section(*ngIf="summary")
-        .section-title 🤖 AI 종합 평가
-        .ai-summary {{ summary }}
-        .cache-info(*ngIf="cachedAt") 분석일: {{ cachedAt }}
+      //- 요약 카드
+      .summary-cards
+        .s-card.s-card-green
+          .s-card-num {{ calorieSufficient }}일
+          .s-card-label 기준 충족
+        .s-card.s-card-orange
+          .s-card-num {{ calorieDeficient }}일
+          .s-card-label 기준 미달
+        .s-card.s-card-red
+          .s-card-num {{ deficientNutrients.length }}개
+          .s-card-label 부족 영양소
 
-      //- 3. 영양소 충족률 (가로 바 차트)
-      .section(*ngIf="nutrientList.length > 0")
-        .section-title 📈 영양소 달성률
-        .nutrient-chart
-          .nutrient-row(*ngFor="let n of nutrientList")
-            .nutrient-label
-              span.n-name {{ n.name }}
-              span.n-target ({{ n.target }})
-            .nutrient-bar-container
-              .nutrient-bar-bg
-                .nutrient-bar-fill('[style.width.%]'="n.percent",
-                  '[style.background]'="getNutrientColor(n.percent)")
-              span.n-pct('[style.color]'="getNutrientColor(n.percent)") {{ n.percent }}%
-            .nutrient-detail
-              span.n-avg 일평균 {{ n.avgDaily }}{{ n.unit }}
+      //- 알레르기 주의
+      .section(*ngIf="parentChildren.length > 0")
+        .section-title-toggle('(click)'="allergyExpanded = !allergyExpanded; service.render()")
+          span ⚠️ 이번 주 알레르기 주의
+          span.toggle-arrow('[class.expanded]'="allergyExpanded") ▼
+        div(*ngIf="allergyExpanded")
+          .child-card(*ngFor="let child of parentChildren")
+            .child-header
+              span.child-name {{ child.name }}
+              span.child-class(*ngIf="child.class_name && role !== 'parent'") ({{ child.class_name }})
+              span.child-age {{ child.age_group }} ({{ child.target_kcal }}kcal)
+            .child-allergies(*ngIf="child.allergy_types.length > 0")
+              span.allergy-label 알레르기:
+              span.allergy-tag(*ngFor="let a of child.allergy_types") {{ a }}
+            .child-alerts(*ngIf="child.allergy_days.length > 0")
+              .alert-title ⚠️ 이번 주 주의 식단
+              .alert-day(*ngFor="let day of child.allergy_days")
+                span.alert-date {{ day.date.substring(5) }}
+                span.alert-items
+                  span.alert-item(*ngFor="let item of day.items")
+                    span(*ngIf="item.dish") {{ item.dish }}({{ item.allergy }})
+                    span(*ngIf="!item.dish") {{ item.allergy }}
+            .child-safe(*ngIf="child.allergy_days.length === 0 && child.allergy_types.length > 0")
+              | ✅ 이번 주 식단에 알레르기 해당 식품이 없습니다.
 
-      //- 4. 부족 영양소 보충 조언
-      .section(*ngIf="deficientNutrients.length > 0")
-        .section-title ⚠️ 보충이 필요한 영양소
-        .deficient-list
-          .deficient-card(*ngFor="let d of deficientNutrients")
-            .def-header
-              span.def-emoji {{ d.emoji }}
-              .def-info
-                span.def-name {{ d.name }}
-                span.def-pct {{ d.percent }}%
-                span.def-target (기준: {{ d.target }})
-            .def-advice {{ d.advice }}
-
-      //- 5. 모든 영양소 양호
-      .section(*ngIf="deficientNutrients.length === 0")
-        .all-good
-          span.all-good-emoji ✅
-          p 이번 달 모든 영양소가 기준치를 충족했습니다!
+      //- 일별 열량 캘린더
+      .section(*ngIf="statsCalendar.length > 0")
+        .section-title 일별 어린이집 제공 열량
+        .age-selector
+          button.age-btn(*ngFor="let a of ageNutrition",
+            '[class.active]'="selectedAge === a.label",
+            '(click)'="selectAge(a.label)") {{ a.label }} ({{ a.kcal }}kcal)
+        .cal-grid
+          span.cal-header(*ngFor="let d of ['일','월','화','수','목','금','토']") {{ d }}
+          .cal-day(*ngFor="let item of statsCalendar",
+            '[class.empty]'="!item.day",
+            '[class.sufficient]'="item.status === 'sufficient'",
+            '[class.deficient]'="item.status === 'deficient'")
+            span.cal-num(*ngIf="item.day") {{ item.day }}
+            span.cal-kcal(*ngIf="item.kcal") {{ item.kcal }}k
+            span.cal-pct(*ngIf="item.pct") {{ item.pct }}%
+        .cal-legend
+          span.legend-item
+            span.legend-dot.dot-sufficient
+            | 기준 충족 (90%↑)
+          span.legend-item
+            span.legend-dot.dot-deficient
+            | 기준 미달 (90%↓)

@@ -128,6 +128,8 @@ def get_dashboard():
     month_total = {k: 0.0 for k in DAYCARE_TARGET}
     daily_nutrients = {}  # date → {nutrient: value}
     daily_calories = {}
+    estimated_count = 0
+    total_menu_count = 0
 
     try:
         all_tasks = []
@@ -141,7 +143,7 @@ def get_dashboard():
             with ThreadPoolExecutor(max_workers=8) as executor:
                 futures = {}
                 for i, (date_str, meal_type, content, day_kcal) in enumerate(all_tasks):
-                    futures[executor.submit(nutrition_api.search_meal, content, selected_age)] = i
+                    futures[executor.submit(nutrition_api.analyze_meal_pipeline, content, selected_age)] = i
                 for future in futures:
                     idx = futures[future]
                     try:
@@ -151,6 +153,11 @@ def get_dashboard():
 
         for i, (date_str, meal_type, content, day_kcal) in enumerate(all_tasks):
             meal_result = search_results.get(i, {'menus': [], 'total': {}, 'found_count': 0, 'total_count': 0})
+            # 추정값 카운트 집계
+            for menu in meal_result.get('menus', []):
+                total_menu_count += 1
+                if menu.get('is_estimated'):
+                    estimated_count += 1
             scaled = nutrition_api.compute_scaled_nutrients(meal_result, meal_type, selected_age, day_kcal if meal_type == '점심' else None)
 
             if date_str not in daily_nutrients:
@@ -251,7 +258,9 @@ JSON 형식: {{"deficient_advice": [{{"name": "영양소명", "emoji": "🍊", "
         nutrients=nutrients,
         deficient_nutrients=deficient_nutrients,
         summary=summary,
-        ages=list(DAYCARE_TARGETS.keys())
+        ages=list(DAYCARE_TARGETS.keys()),
+        estimated_count=estimated_count,
+        total_menu_count=total_menu_count
     )
 
     # 캐시 저장

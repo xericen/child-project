@@ -39,20 +39,22 @@ def _compress_image(file_data, max_width=MAX_IMAGE_WIDTH, quality=JPEG_QUALITY):
 
 def notify_server_parents(server_id, noti_type, title, message, link=""):
     try:
-        member_ids = [m.user_id for m in ServerMembers.select(ServerMembers.user_id).where(ServerMembers.server_id == int(server_id))]
-        if not member_ids:
+        parent_members = ServerMembers.select(ServerMembers.user_id).where(
+            (ServerMembers.server_id == int(server_id)) & (ServerMembers.role == "parent")
+        )
+        parent_ids = [m.user_id for m in parent_members]
+        if not parent_ids:
             return
-        parents = Users.select(Users.id).where(Users.id.in_(member_ids), Users.role == "parent")
-        for p in parents:
+        for pid in parent_ids:
             Notifications.create(
-                user_id=p.id,
+                user_id=pid,
                 type=noti_type,
                 title=title,
                 message=message,
                 link=link
             )
             try:
-                push.send_to_user(p.id, title, message, url=link or "/note", noti_type=noti_type)
+                push.send_to_user(pid, title, message, url=link or "/note", noti_type=noti_type)
             except Exception:
                 pass
     except Exception:

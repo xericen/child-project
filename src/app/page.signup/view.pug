@@ -39,13 +39,17 @@
 
       .form-group
         label.form-label 역할 선택
-        .input-wrap
-          select.form-input(
-            [(ngModel)]="selectedRole"
-          )
-            option(value="") select role
-            option(value="parent") 부모
-            option(value="teacher") 교사
+        .role-toggle-group
+          button.role-toggle-btn(
+            type="button",
+            '[class.active]'="selectedRole === 'parent'",
+            '(click)'="selectRole('parent')")
+            span.role-label 부모
+          button.role-toggle-btn(
+            type="button",
+            '[class.active]'="selectedRole === 'teacher'",
+            '(click)'="selectRole('teacher')")
+            span.role-label 교사
 
       .form-group(*ngIf="selectedRole === 'parent'")
         label.form-label 자녀 이름

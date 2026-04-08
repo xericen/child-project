@@ -71,7 +71,7 @@ MEAL_RATIOS = {
 DAYCARE_TARGETS = {
     '1~2세': {
         'calories': {'value': 420, 'label': '420kcal', 'unit': 'kcal'},
-        'protein': {'value': 11, 'label': '11g', 'unit': 'g'},
+        'protein': {'value': 20, 'label': '20g', 'unit': 'g'},
         'fat': {'value': 17, 'label': '17g', 'unit': 'g'},
         'carbohydrate': {'value': 73, 'label': '73g', 'unit': 'g'},
         'calcium': {'value': 250, 'label': '250mg', 'unit': 'mg'},
@@ -568,17 +568,385 @@ class NutritionAPI:
         try:
             gemini = wiz.model("gemini")
             category_list = "밥류, 국 및 탕류, 나물·숙채류, 볶음류, 구이류, 찜류, 조림류, 튀김류, 과일류, 유제품, 빵 및 과자류, 김치류, 면 및 만두류"
-            prompt = f"""'{food_name}'의 **100g당** 영양 성분을 추정해주세요.
+            prompt = f"""한국 어린이집 급식 기준, '{food_name}'의 **100g당** 영양 성분을 추정해주세요.
 category는 다음 중 가장 적합한 것을 선택: [{category_list}]
-반드시 아래 JSON 형식으로만 응답하세요. 수치는 숫자만.
+반드시 아래 JSON 형식으로만 응답하세요. 수치는 숫자만, 0보다 큰 현실적인 값으로.
 {{"name": "{food_name}", "serving_size": "100g", "category": "국 및 탕류", "calories": 0, "protein": 0, "fat": 0, "carbohydrate": 0, "sugar": 0, "fiber": 0, "calcium": 0, "iron": 0, "phosphorus": 0, "potassium": 0, "sodium": 0, "vitamin_a": 0, "vitamin_c": 0}}"""
             result = gemini.ask_json(prompt)
             if isinstance(result, dict) and result.get('calories', 0) > 0:
                 result['source'] = 'ai_estimate'
+                result['is_estimated'] = True
                 return result
         except Exception:
             pass
         return None
+
+    def _ai_fallback_batch(self, food_names):
+        """여러 음식의 영양성분을 Gemini로 일괄 추정 (is_estimated=True).
+        반환: {food_name: nutrient_dict, ...}"""
+        if not food_names:
+            return {}
+        results = {}
+        try:
+            gemini = wiz.model("gemini")
+            category_list = "밥류, 국 및 탕류, 나물·숙채류, 볶음류, 구이류, 찜류, 조림류, 튀김류, 과일류, 유제품, 빵 및 과자류, 김치류, 면 및 만두류"
+            food_list_str = json.dumps(food_names, ensure_ascii=False)
+            prompt = f"""한국 어린이집 급식 기준, 아래 음식 각각의 **100g당** 영양 성분을 추정해주세요.
+category는 다음 중 선택: [{category_list}]
+수치는 0보다 큰 현실적인 값으로 추정하세요. 절대 0이나 null을 넣지 마세요.
+
+음식 목록: {food_list_str}
+
+반드시 아래 JSON 배열 형식으로만 응답, 다른 텍스트 없이:
+[{{"name": "음식명", "serving_size": "100g", "category": "카테고리", "calories": 숫자, "protein": 숫자, "fat": 숫자, "carbohydrate": 숫자, "sugar": 숫자, "fiber": 숫자, "calcium": 숫자, "iron": 숫자, "phosphorus": 숫자, "potassium": 숫자, "sodium": 숫자, "vitamin_a": 숫자, "vitamin_c": 숫자}}]"""
+            ai_result = gemini.ask_json(prompt)
+            if isinstance(ai_result, list):
+                for item in ai_result:
+                    if isinstance(item, dict) and item.get('calories', 0) > 0:
+                        name = item.get('name', '')
+                        item['source'] = 'ai_estimate'
+                        item['is_estimated'] = True
+                        results[name] = item
+        except Exception:
+            pass
+        # 개별 fallback: 일괄 추정에서 누락된 항목
+        for name in food_names:
+            if name not in results:
+                single = self._ai_fallback(name)
+                if single:
+                    results[name] = single
+        return results
+
+    def normalize_food_names(self, food_list):
+        """음식명 리스트 전체를 Gemini로 식약처 검색용 이름으로 일괄 정규화.
+        반환: [{"original": "...", "search": "..."}, {"original": "...", "search_list": ["...", ...]}, ...]"""
+        if not food_list:
+            return []
+        try:
+            gemini = wiz.model("gemini")
+            food_list_str = json.dumps(food_list, ensure_ascii=False)
+            prompt = f"""다음은 어린이집 급식표의 음식 이름 목록입니다.
+각각을 한국 식약처 식품영양성분 DB에서 검색하기 가장 적합한 이름으로 변환해주세요.
+
+규칙:
+- 복합 음식은 대표 재료 하나만 (두부피망볶음 → 두부볶음)
+- 붙어있는 두 음식은 분리 (한과매실차 → 한과 / 매실차)
+- 조리법보다 재료명 위주로
+- 이미 검색에 적합한 단순 음식명(우유, 쌀밥, 배추김치 등)은 그대로 유지
+- 반드시 아래 JSON 형식으로만 반환, 다른 텍스트 없이
+
+입력: {food_list_str}
+
+반환 형식:
+[
+  {{"original": "두부피망볶음", "search": "두부볶음"}},
+  {{"original": "한과매실차", "search_list": ["한과", "매실차"]}},
+  {{"original": "쌀밥", "search": "쌀밥"}}
+]"""
+            result = gemini.ask_json(prompt)
+            if isinstance(result, list):
+                # 원본 이름이 누락된 항목 보완
+                originals_in_result = set()
+                for item in result:
+                    if isinstance(item, dict):
+                        originals_in_result.add(item.get('original', ''))
+                for name in food_list:
+                    if name not in originals_in_result:
+                        result.append({"original": name, "search": name})
+                return result
+        except Exception:
+            pass
+        # Gemini 실패 시 원본 그대로 반환
+        return [{"original": name, "search": name} for name in food_list]
+
+    def search_batch(self, normalized_items):
+        """정규화된 음식명 목록으로 병렬 검색.
+        Args: normalized_items — normalize_food_names() 반환값
+        Returns: {original_name: {"result": nutrient_dict or None, "search_names": [...]}, ...}"""
+        if not normalized_items:
+            return {}
+        # 검색할 고유 이름 수집
+        search_names = set()
+        for item in normalized_items:
+            if not isinstance(item, dict):
+                continue
+            if 'search_list' in item:
+                for s in item['search_list']:
+                    search_names.add(s)
+            elif 'search' in item:
+                search_names.add(item['search'])
+        search_names = list(search_names)
+        # 병렬 검색 (기존 search() 파이프라인 재활용)
+        search_results = {}
+        if search_names:
+            with ThreadPoolExecutor(max_workers=min(len(search_names), 8)) as executor:
+                futures = {executor.submit(self.search, name): name for name in search_names}
+                for future in as_completed(futures):
+                    name = futures[future]
+                    try:
+                        search_results[name] = future.result()
+                    except Exception:
+                        search_results[name] = None
+        # 결과를 original 기준으로 매핑
+        batch_results = {}
+        for item in normalized_items:
+            if not isinstance(item, dict):
+                continue
+            original = item.get('original', '')
+            if 'search_list' in item:
+                # 분리된 음식: 각각의 결과를 리스트로
+                sub_results = []
+                for s in item['search_list']:
+                    sub_results.append({
+                        'search_name': s,
+                        'result': search_results.get(s)
+                    })
+                batch_results[original] = {
+                    'result': sub_results,
+                    'search_names': item['search_list'],
+                    'is_split': True
+                }
+            else:
+                search_name = item.get('search', original)
+                batch_results[original] = {
+                    'result': search_results.get(search_name),
+                    'search_names': [search_name],
+                    'is_split': False
+                }
+        return batch_results
+
+    def analyze_meal_pipeline(self, meal_content, age_group='1~2세'):
+        """통합 파이프라인: [1] Gemini 일괄 정규화 → [2] 병렬 식약처 검색 → [3] Gemini fallback 보완.
+        search_meal()과 동일한 반환 형식을 유지하여 호환성 보장."""
+        if not meal_content:
+            return {'menus': [], 'total': {}, 'found_count': 0, 'total_count': 0}
+
+        # === 메뉴 파싱 (search_meal의 파싱 로직 재활용) ===
+        content = meal_content
+        for young_menu, old_menu in AGE_MENU_PAIRS:
+            young_pat = r'\s*'.join(re.escape(ch) for ch in young_menu)
+            old_pat = r'\s*'.join(re.escape(ch) for ch in old_menu)
+            pattern = young_pat + r'\s*' + old_pat
+            replacement = young_menu if age_group == '1~2세' else old_menu
+            content = re.sub(pattern, replacement, content)
+
+        lines = [l.strip() for l in content.replace('\r\n', '\n').split('\n') if l.strip()]
+        menu_entries = []
+        prev_item_idx = None
+
+        for line in lines:
+            green_matches = GREEN_PATTERN.findall(line)
+            line_cleaned = GREEN_PATTERN.sub('', line).strip()
+
+            if green_matches:
+                green_items = []
+                for raw in green_matches:
+                    gname = self._clean_menu_name(raw.replace('{{green:', '').replace('}}', ''))
+                    if gname and gname not in ('/', '-'):
+                        green_items.append(gname)
+                if green_items:
+                    if age_group == '1~2세':
+                        for gname in green_items:
+                            menu_entries.append((gname, False))
+                        if prev_item_idx is not None:
+                            old_name, _ = menu_entries[prev_item_idx]
+                            menu_entries[prev_item_idx] = (old_name, True)
+                    else:
+                        for gname in green_items:
+                            menu_entries.append((gname, True))
+                if line_cleaned:
+                    cleaned = self._clean_menu_name(line_cleaned)
+                    if cleaned and cleaned not in ('/', '-'):
+                        prev_item_idx = len(menu_entries)
+                        menu_entries.append((cleaned, False))
+                    else:
+                        prev_item_idx = None
+                else:
+                    prev_item_idx = None
+            else:
+                if line_cleaned:
+                    cleaned = self._clean_menu_name(line_cleaned)
+                    if cleaned and cleaned not in ('/', '-'):
+                        prev_item_idx = len(menu_entries)
+                        menu_entries.append((cleaned, False))
+
+        if not menu_entries:
+            return {'menus': [], 'total': {}, 'found_count': 0, 'total_count': 0}
+
+        # === [1] Gemini 일괄 정규화 ===
+        unique_names = list(set(name for name, _ in menu_entries))
+        normalized = self.normalize_food_names(unique_names)
+
+        # === [2] 병렬 식약처 검색 ===
+        batch_results = self.search_batch(normalized)
+
+        # === [3] 못 찾은 항목 → Gemini 일괄 fallback ===
+        missing_names = []
+        for original, info in batch_results.items():
+            if info.get('is_split'):
+                for sub in info['result']:
+                    if sub.get('result') is None:
+                        missing_names.append(sub['search_name'])
+            else:
+                if info.get('result') is None:
+                    missing_names.extend(info['search_names'])
+
+        fallback_results = {}
+        if missing_names:
+            fallback_results = self._ai_fallback_batch(list(set(missing_names)))
+            # fallback 결과를 DB 캐시에 저장
+            for fname, fdata in fallback_results.items():
+                self._db_mapping_save(fname, fdata, source='ai_estimate')
+                with self._lock:
+                    self._cache[fname] = {'data': fdata, 'time': time.time()}
+
+        # fallback 결과를 batch_results에 병합
+        for original, info in batch_results.items():
+            if info.get('is_split'):
+                for sub in info['result']:
+                    if sub.get('result') is None and sub['search_name'] in fallback_results:
+                        sub['result'] = fallback_results[sub['search_name']]
+            else:
+                if info.get('result') is None:
+                    for sname in info['search_names']:
+                        if sname in fallback_results:
+                            info['result'] = fallback_results[sname]
+                            break
+
+        # === [3.5] AI 매칭 검증 — 원래 음식과 API 매칭 결과가 맞는지 확인 ===
+        verify_items = []
+        for original, info in batch_results.items():
+            if info.get('is_split'):
+                continue
+            result = info.get('result')
+            if result and not result.get('is_estimated'):
+                matched = result.get('name', '')
+                category = result.get('category', '')
+                if matched and matched != original:
+                    verify_items.append({
+                        'original': original,
+                        'matched': matched,
+                        'category': category,
+                        'calories': result.get('calories', 0),
+                    })
+
+        if verify_items:
+            mismatch_names = self._verify_food_matches(verify_items)
+            if mismatch_names:
+                print(f"[매칭검증] 불일치 감지: {mismatch_names}")
+                # 불일치 항목은 AI fallback으로 교체
+                re_fallback = self._ai_fallback_batch(mismatch_names)
+                for fname, fdata in re_fallback.items():
+                    self._db_mapping_save(fname, fdata, source='ai_estimate')
+                    with self._lock:
+                        self._cache[fname] = {'data': fdata, 'time': time.time()}
+                for original, info in batch_results.items():
+                    if original in mismatch_names and original in re_fallback:
+                        info['result'] = re_fallback[original]
+                        print(f"  [교체] {original}: API→AI추정 ({re_fallback[original].get('calories',0)}kcal/100g)")
+
+        # === 결과 조립 (search_meal 호환 형식) ===
+        menus = []
+        total = {k: 0.0 for k in NUTRIENT_FIELDS}
+        found_count = 0
+
+        for cleaned, is_substitute in menu_entries:
+            info = batch_results.get(cleaned, {})
+            scaled_nutrition = None
+            is_estimated = False
+
+            if info.get('is_split'):
+                # 분리된 음식: 각 서브 결과의 영양소를 합산
+                combined = {k: 0.0 for k in NUTRIENT_FIELDS}
+                any_found = False
+                any_estimated = False
+                for sub in info.get('result', []):
+                    r = sub.get('result')
+                    if r:
+                        any_found = True
+                        if r.get('is_estimated'):
+                            any_estimated = True
+                        ratio = self._get_serving_ratio(r, age_group)
+                        for k in NUTRIENT_FIELDS:
+                            if k in r and isinstance(r[k], (int, float)):
+                                combined[k] += r[k] * ratio
+                if any_found:
+                    for k in combined:
+                        combined[k] = round(combined[k], 2)
+                    combined['name'] = cleaned
+                    combined['serving_size'] = '1인분'
+                    combined['category'] = ''
+                    if any_estimated:
+                        combined['is_estimated'] = True
+                    scaled_nutrition = combined
+                is_estimated = any_estimated
+            else:
+                result = info.get('result')
+                if result:
+                    is_estimated = bool(result.get('is_estimated'))
+                    serving_ratio = self._get_serving_ratio(result, age_group)
+                    if serving_ratio != 1.0:
+                        scaled_nutrition = {}
+                        for k, v in result.items():
+                            if k in NUTRIENT_FIELDS and isinstance(v, (int, float)):
+                                scaled_nutrition[k] = round(v * serving_ratio, 2)
+                            else:
+                                scaled_nutrition[k] = v
+                        scaled_nutrition['serving_ratio'] = serving_ratio
+                    else:
+                        scaled_nutrition = result
+
+            entry = {
+                'name': cleaned,
+                'found': scaled_nutrition is not None,
+                'nutrition': scaled_nutrition,
+                'is_substitute': is_substitute,
+                'is_estimated': is_estimated
+            }
+            menus.append(entry)
+
+            if scaled_nutrition:
+                found_count += 1
+                for key in NUTRIENT_FIELDS:
+                    total[key] += scaled_nutrition.get(key, 0.0)
+
+        for key in total:
+            total[key] = round(total[key], 1)
+
+        return {
+            'menus': menus,
+            'total': total,
+            'found_count': found_count,
+            'total_count': len(menus)
+        }
+
+    def _verify_food_matches(self, verify_items):
+        """API 매칭 결과가 원래 음식과 일치하는지 AI로 검증.
+        Args: verify_items — [{'original': '찐고구마', 'matched': '고구마전', 'category': '전·적 및 부침류', 'calories': 103}, ...]
+        Returns: 불일치하는 원본 음식명 리스트"""
+        if not verify_items:
+            return []
+        try:
+            gemini = wiz.model("gemini")
+            items_str = json.dumps(verify_items, ensure_ascii=False)
+            prompt = f"""어린이집 급식표의 음식 이름(original)과 식약처 API에서 매칭된 결과(matched, category)를 비교합니다.
+
+각 항목에서 원래 음식과 매칭된 식품이 **같은 음식 또는 같은 조리법**인지 판단하세요.
+- 조리법이 다르면 불일치 (예: "찐고구마"는 쪄서 만든 것인데 "고구마전"은 부침 → 불일치)
+- 재료는 같지만 조리법이 완전히 다르면 불일치
+- 단순 표기 차이(쌀밥↔흰쌀밥)나 약간의 차이(가자미조림↔가자미조림)는 일치로 판단
+
+입력: {items_str}
+
+불일치하는 항목의 original 이름만 JSON 배열로 반환하세요.
+모두 일치하면 빈 배열 [] 을 반환하세요.
+예: ["찐고구마", "콩나물국"]"""
+            result = gemini.ask_json(prompt)
+            if isinstance(result, list):
+                return [name for name in result if isinstance(name, str)]
+        except Exception as e:
+            print(f"[매칭검증] AI 검증 실패: {e}")
+        return []
 
     def _get_serving_ratio(self, result, age_group='1~2세'):
         """per-100g/100mL 데이터를 어린이 1인분 제공량(g)으로 스케일링하는 비율 반환.
@@ -727,7 +1095,8 @@ category는 다음 중 가장 적합한 것을 선택: [{category_list}]
                 'name': cleaned,
                 'found': result is not None,
                 'nutrition': scaled_nutrition,
-                'is_substitute': is_substitute
+                'is_substitute': is_substitute,
+                'is_estimated': bool(result.get('is_estimated')) if result else False
             }
             menus.append(entry)
 

@@ -5,9 +5,9 @@
     //- 상단 영역
     .top-area
       .top-left
-        p.server-badge(*ngIf="serverName") {{ serverName }}
-        p.class-badge(*ngIf="className",
-          style="margin-top: 4px;") {{ className }}반
+        .badge-row
+          span.server-badge(*ngIf="serverName") {{ serverName }}
+          span.class-badge(*ngIf="className") {{ className }}
 
         h1.title
           | {{ titleName }}

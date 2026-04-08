@@ -70,22 +70,17 @@ input(type="file",
           button.day-delete(*ngIf="canUpload()",
             '(click)'="deleteDatePhotos(day, '공용')") ✕
         .meal-slots
-          .meal-slot(*ngFor="let slot of day.slots",
-            '[class]'="getMealSlotClass(slot.meal_type)")
-            .slot-label-bar
-              span.slot-label-text {{ slot.meal_type }}
-            .slot-body
-              .slot-photo-wrap(*ngIf="slot.photo")
-                img.slot-photo('[src]'="getSlotPhotoUrl(slot)",
-                  '(click)'="openSlotPhoto(slot)")
-                .slot-photo-actions(*ngIf="canUpload()")
-                  button.slot-change-btn('(click)'="onSlotUploadClick(day, slot, '공용')") 변경
-                  button.slot-delete-btn('(click)'="deleteSlotPhoto(slot, '공용')") 삭제
-              .slot-empty(*ngIf="!slot.photo",
-                '[class.no-hover]'="!canUpload()",
-                '(click)'="canUpload() && onSlotUploadClick(day, slot, '공용')")
-                span.slot-plus-badge(*ngIf="canUpload()") +
-                span.slot-noimage-text(*ngIf="!canUpload()") 사진 없음
+          .meal-slot(*ngFor="let slot of day.slots")
+            .slot-card('[class.has-photo]'="slot.photo",
+              '(click)'="slot.photo ? openSlotPhoto(slot) : (canUpload() ? onSlotUploadClick(day, slot, '공용') : null)")
+              span.slot-card-label(*ngIf="!slot.photo") {{ slot.meal_type }}
+              img.slot-card-photo(*ngIf="slot.photo",
+                '[src]'="getSlotPhotoUrl(slot)")
+              span.slot-card-plus(*ngIf="!slot.photo && canUpload()") +
+              span.slot-noimage-text(*ngIf="!slot.photo && !canUpload()") 사진 없음
+            .slot-actions(*ngIf="canUpload() && slot.photo")
+              button.slot-action-btn.slot-action-change('(click)'="onSlotUploadClick(day, slot, '공용')") 변경
+              button.slot-action-btn.slot-action-delete('(click)'="deleteSlotPhoto(slot, '공용')") 삭제
 
     // 아이 사진 캘린더 모드
     div(*ngIf="mode === 'child_calendar'")
@@ -116,22 +111,17 @@ input(type="file",
           button.day-delete(*ngIf="canUpload()",
             '(click)'="deleteDatePhotos(day, '아이')") ✕
         .meal-slots
-          .meal-slot(*ngFor="let slot of day.slots",
-            '[class]'="getMealSlotClass(slot.meal_type)")
-            .slot-label-bar
-              span.slot-label-text {{ slot.meal_type }}
-            .slot-body
-              .slot-photo-wrap(*ngIf="slot.photo")
-                img.slot-photo('[src]'="getSlotPhotoUrl(slot)",
-                  '(click)'="openSlotPhoto(slot)")
-                .slot-photo-actions(*ngIf="canUpload()")
-                  button.slot-change-btn('(click)'="onSlotUploadClick(day, slot, '아이')") 변경
-                  button.slot-delete-btn('(click)'="deleteSlotPhoto(slot, '아이')") 삭제
-              .slot-empty(*ngIf="!slot.photo",
-                '[class.no-hover]'="!canUpload()",
-                '(click)'="canUpload() && onSlotUploadClick(day, slot, '아이')")
-                span.slot-plus-badge(*ngIf="canUpload()") +
-                span.slot-noimage-text(*ngIf="!canUpload()") 사진 없음
+          .meal-slot(*ngFor="let slot of day.slots")
+            .slot-card('[class.has-photo]'="slot.photo",
+              '(click)'="slot.photo ? openSlotPhoto(slot) : (canUpload() ? onSlotUploadClick(day, slot, '아이') : null)")
+              span.slot-card-label(*ngIf="!slot.photo") {{ slot.meal_type }}
+              img.slot-card-photo(*ngIf="slot.photo",
+                '[src]'="getSlotPhotoUrl(slot)")
+              span.slot-card-plus(*ngIf="!slot.photo && canUpload()") +
+              span.slot-noimage-text(*ngIf="!slot.photo && !canUpload()") 사진 없음
+            .slot-actions(*ngIf="canUpload() && slot.photo")
+              button.slot-action-btn.slot-action-change('(click)'="onSlotUploadClick(day, slot, '아이')") 변경
+              button.slot-action-btn.slot-action-delete('(click)'="deleteSlotPhoto(slot, '아이')") 삭제
 
     // 사진 확대 모달
     .photo-modal-overlay(*ngIf="expandedSlot",

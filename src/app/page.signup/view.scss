@@ -118,6 +118,59 @@
   background: transparent;
 }
 
+// 역할 선택 토글 버튼 그룹
+.role-toggle-group {
+  display: flex;
+  border: 1.5px solid #e0e3f5;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fafbff;
+
+  .role-toggle-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 12px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #999;
+    transition: all 0.25s ease;
+    position: relative;
+
+    &:first-child {
+      border-right: 1px solid #e0e3f5;
+    }
+
+    &.active {
+      background: #5b6ef5;
+      color: #fff;
+
+      .role-icon {
+        transform: scale(1.1);
+      }
+    }
+
+    &:not(.active):hover {
+      background: #f0f2ff;
+      color: #5b6ef5;
+    }
+
+    .role-icon {
+      font-size: 1.2rem;
+      transition: transform 0.2s;
+    }
+
+    .role-label {
+      letter-spacing: 0.5px;
+    }
+  }
+}
+
 // 접미사 고정 표시 input group
 .input-group {
   display: flex;
