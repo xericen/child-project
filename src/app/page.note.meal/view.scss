@@ -939,7 +939,87 @@
   }
 }
 
-/* 식단 카드 */
+/* 타임라인 */
+.timeline {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  padding-left: 28px;
+  margin-bottom: 16px;
+
+  &::before {
+    content: '';
+    position: absolute;
+    left: 7px;
+    top: 8px;
+    bottom: 24px;
+    width: 1.5px;
+    background: #d0d4e8;
+  }
+}
+
+.tl-block {
+  position: relative;
+  margin-bottom: 18px;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.tl-dot {
+  position: absolute;
+  left: -24px;
+  top: 3px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #3a4de4;
+  border: 2.5px solid #fff;
+  box-shadow: 0 0 0 1px #d0d4e8;
+}
+
+.tl-block.allergy-danger .tl-dot {
+  background: #e74c3c;
+  box-shadow: 0 0 0 1px #e74c3c;
+}
+
+.tl-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #3a4de4;
+  margin-bottom: 6px;
+  letter-spacing: 0.03em;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.tl-card {
+  background: #fff;
+  border: 1.5px solid #e0e3f5;
+  border-radius: 16px;
+  padding: 14px 16px;
+
+  .meal-line {
+    font-size: 0.95rem;
+    color: #1a1a2e;
+    line-height: 1.8;
+    font-weight: 500;
+  }
+
+  .green-text {
+    color: #2E7D32;
+    font-weight: 700;
+  }
+}
+
+.tl-block.allergy-danger .tl-card {
+  border-color: #e74c3c;
+  background: #fff5f5;
+}
+
+/* 식단 카드 (영양분석 등에서 사용) */
 .meal-card {
   border: 1.5px solid #e0e3f5;
   border-radius: 16px;

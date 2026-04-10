@@ -9,11 +9,12 @@ export class Component implements OnInit {
     afternoonSnack: string = '';
     allergyWarnings: any = {};
     allergyDishes: any = {};
+    mealKcal: any = {};
     pageLoading: boolean = true;
+    currentPage: number = 0;
+    mainIngredients: any[] = [];
 
-    // 저녁 추천 (부모용) - 3단계 분석
     dinnerLoading: boolean = false;
-    showDinner: boolean = false;
     dinnerError: string = '';
     analysis: any = null;
 
@@ -31,17 +32,22 @@ export class Component implements OnInit {
         const res = await wiz.call("get_today_menu");
         if (res.code === 200) {
             this.role = res.data.role || 'parent';
-            this.morningSnack = res.data.morning_snack || '등록된 오전간식이 없습니다.';
-            this.lunchMenu = res.data.lunch || '등록된 점심 식단이 없습니다.';
-            this.afternoonSnack = res.data.afternoon_snack || '등록된 오후간식이 없습니다.';
+            this.morningSnack = res.data.morning_snack || '';
+            this.lunchMenu = res.data.lunch || '';
+            this.afternoonSnack = res.data.afternoon_snack || '';
             this.allergyWarnings = res.data.allergy_warnings || {};
             this.allergyDishes = res.data.allergy_dishes || {};
+            this.mealKcal = res.data.meal_kcal || {};
         }
     }
 
-    public async recommendDinner() {
+    public async onDinnerClick() {
+        if (this.analysis) {
+            this.currentPage = 2;
+            await this.service.render();
+            return;
+        }
         this.dinnerLoading = true;
-        this.showDinner = true;
         this.dinnerError = '';
         this.analysis = null;
         await this.service.render();
@@ -50,7 +56,9 @@ export class Component implements OnInit {
             const res = await wiz.call("recommend_dinner");
             if (res.code === 200 && res.data.analysis) {
                 this.analysis = res.data.analysis;
-                this.fixGreenAndScaling();
+                this.currentPage = 0;
+                this.extractIngredients();
+                this.logAnalysis();
             } else {
                 this.dinnerError = res.data?.message || res.data?.error || '추천을 가져오지 못했습니다.';
             }
@@ -63,45 +71,58 @@ export class Component implements OnInit {
         }
     }
 
-    private fixGreenAndScaling() {
+    private extractIngredients() {
+        if (!this.analysis?.stage1?.meals) return;
+        const names = new Set<string>();
+        const childAllergies = new Set<string>();
+
+        // 자녀 알레르기 키워드 수집
+        for (const mt of Object.keys(this.allergyWarnings)) {
+            for (const name of (this.allergyWarnings[mt] || [])) {
+                childAllergies.add(name);
+            }
+        }
+
+        for (const meal of this.analysis.stage1.meals) {
+            for (const item of (meal.items || [])) {
+                if (item.is_substitute) continue;
+                const name = (item.name || '').replace(/[()（）]/g, ' ');
+                // 주재료 추출: 2글자 이상 키워드
+                const parts = name.split(/[\s,·+&/]+/).filter((p: string) => p.length >= 2);
+                for (const p of parts) {
+                    if (!['후식', '라이스', '그린', '미니'].includes(p)) {
+                        names.add(p);
+                    }
+                }
+            }
+        }
+
+        this.mainIngredients = Array.from(names).map(name => ({
+            name,
+            isAllergen: childAllergies.has(name) ||
+                Array.from(childAllergies).some(a => name.includes(a) || a.includes(name))
+        }));
+    }
+
+    private logAnalysis() {
         if (!this.analysis?.stage1?.meals) return;
         console.log('========== 저녁추천 영양 분석 결과 ==========');
         for (const meal of this.analysis.stage1.meals) {
             console.log(`\n[${meal.meal_type}]`);
             for (const item of (meal.items || [])) {
-                const sub = item.is_substitute ? ' (대체식)' : '';
-                const est = item.is_estimated ? ' (AI추정)' : '';
-                const matched = item.matched_name ? ` → 매칭: "${item.matched_name}"` : ' → 매칭실패';
                 const src = item.source || '?';
-                const serving = item.serving_size || '?';
-                const ratio = item.serving_ratio && item.serving_ratio !== 1 ? ` ×${item.serving_ratio}` : '';
-                const cat = item.category ? ` [${item.category}]` : '';
-                console.log(`  📌 ${item.name}${sub}${est}${matched} | 소스: ${src} | ${serving}${ratio}${cat}`);
-                console.log(`     칼로리: ${item.calories || 0}kcal | 단백질: ${item.protein || 0}g | 지방: ${item.fat || 0}g | 탄수화물: ${item.carbs || 0}g | 칼슘: ${item.calcium || 0}mg | 철분: ${item.iron || 0}mg`);
-            }
-            if (meal.subtotal) {
-                console.log(`  [소계] ${meal.subtotal.calories || 0}kcal`);
+                console.log(`  ${item.name} (${src}) ${item.calories}kcal p=${item.protein}g f=${item.fat}g c=${item.carbs}g ca=${item.calcium}mg fe=${item.iron}mg`);
             }
         }
-        console.log(`\n[총합] 칼로리: ${this.analysis.stage1.total?.calories || 0}kcal, 단백질: ${this.analysis.stage1.total?.protein || 0}g`);
-        console.log('\n[Stage2 - 목표 대비]');
-        console.log('  섭취량:', this.analysis.stage2?.consumed);
-        console.log('  권장량:', this.analysis.stage2?.recommended);
-        console.log('  부족분:', this.analysis.stage2?.deficit);
-        console.log('  상태:', this.analysis.stage2?.status);
-        if (this.analysis.stage3?.error) {
-            console.error('\n[Stage3 에러]', this.analysis.stage3.error);
-            if (this.analysis.stage3.traceback) {
-                console.error('[traceback]', this.analysis.stage3.traceback);
-            }
-        }
-        if (this.analysis.stage3?.menus?.length) {
-            console.log(`\n[Stage3 추천] ${this.analysis.stage3.menus.length}개 메뉴`);
-            for (const m of this.analysis.stage3.menus) {
-                console.log(`  🍳 ${m.name}: ${m.nutrients?.calories || 0}kcal — ${m.reason || ''}`);
-            }
-        }
+        console.log(`\n[총합] ${JSON.stringify(this.analysis.stage1.total)}`);
+        console.log(`[목표] ${JSON.stringify(this.analysis.stage2?.recommended)}`);
+        console.log(`[상태] ${JSON.stringify(this.analysis.stage2?.status)}`);
         console.log('==========================================');
+    }
+
+    public async goToPage(page: number) {
+        this.currentPage = page;
+        await this.service.render();
     }
 
     public getNutrientLabel(key: string): string {
@@ -120,27 +141,48 @@ export class Component implements OnInit {
         return units[key] || '';
     }
 
-    public getDeficitPercent(deficit: any, recommended: any, key: string): number {
-        if (!recommended || !recommended[key] || recommended[key] === 0) return 0;
-        const consumed = (recommended[key] - (deficit[key] || 0));
-        return Math.round((consumed / recommended[key]) * 100);
-    }
-
     public getNutrientStatus(key: string): string {
         return this.analysis?.stage2?.status?.[key] || '';
+    }
+
+    public getNutrientFillPercent(key: string): number {
+        const rec = this.analysis?.stage2?.recommended?.[key] || 0;
+        const consumed = this.analysis?.stage2?.consumed?.[key] || 0;
+        if (rec <= 0) return 0;
+        return Math.min(Math.round((consumed / rec) * 100), 100);
     }
 
     public nutrientKeys(): string[] {
         return ['calories', 'protein', 'fat', 'carbs', 'calcium', 'iron'];
     }
 
+    public getDailyCaloriePercent(): number {
+        const dailyTarget = this.analysis?.stage2?.daily_target?.calories || 0;
+        const consumed = this.analysis?.stage2?.consumed?.calories || 0;
+        if (dailyTarget <= 0) return 0;
+        return Math.min(Math.round((consumed / dailyTarget) * 100), 100);
+    }
+
+    public getDailyCalorieDeficit(): number {
+        return this.analysis?.stage2?.dinner_deficit?.calories || 0;
+    }
+
+    public getCalorieRingOffset(): number {
+        const pct = this.getDailyCaloriePercent();
+        const circumference = 2 * Math.PI * 48;
+        return circumference - (circumference * pct / 100);
+    }
+
+    public getCalorieRingCircumference(): number {
+        return 2 * Math.PI * 48;
+    }
+
     public formatMealContent(content: string): string {
         if (!content) return '';
-        // 연령별 연결 메뉴 분리 표시 (백김치배추김치 → 백김치(1~2세) / 배추김치(3~5세))
         const agePairs: [string, string][] = [['백김치', '배추김치']];
         for (const [young, old] of agePairs) {
             const pattern = new RegExp(young + '\\s*' + old, 'g');
-            content = content.replace(pattern, young + '(1~2\uc138)\n' + old + '(3~5\uc138)');
+            content = content.replace(pattern, young + '(1~2세)\n' + old + '(3~5세)');
         }
         return content.replace(/\{\{green:(.*?)\}\}/g, '<span class="green-text">$1</span>').replace(/\n/g, '<br>');
     }

@@ -1782,12 +1782,47 @@ KEYWORD_ALIASES = {
 }
 
 def _keyword_in_content(keyword, content):
+    """키워드가 식단 content에 매칭되는지 확인.
+    1. 직접 문자열 포함
+    2. KEYWORD_ALIASES 별칭 매칭
+    3. AI 재료 캐시 매칭 (childcheck에서 생성)
+    """
     if keyword in content:
         return True
     for alias in KEYWORD_ALIASES.get(keyword, []):
         if alias in content:
             return True
+    # AI 재료 캐시 확인
+    matched_dishes = _get_ingredient_cache(keyword)
+    if matched_dishes:
+        for dish in matched_dishes:
+            if dish in content:
+                return True
     return False
+
+_ingredient_cache_store = {}
+
+def _get_ingredient_cache(keyword):
+    """allergy_ingredient_cache에서 키워드의 매칭 음식 목록을 로드"""
+    if keyword in _ingredient_cache_store:
+        return _ingredient_cache_store[keyword]
+    try:
+        import hashlib, datetime
+        server_id = _get_server_id()
+        if not server_id:
+            return []
+        month_str = datetime.date.today().strftime("%Y-%m")
+        cache_fs = wiz.project.fs("data", "allergy_ingredient_cache", str(server_id), month_str)
+        cache_file = hashlib.md5(keyword.encode()).hexdigest() + ".json"
+        if cache_fs.exists(cache_file):
+            data = cache_fs.read.json(cache_file, default={})
+            matched = data.get("matched_dishes", [])
+            _ingredient_cache_store[keyword] = matched
+            return matched
+    except Exception:
+        pass
+    _ingredient_cache_store[keyword] = []
+    return []
 
 def get_parent_stats():
     role = wiz.session.get("role")

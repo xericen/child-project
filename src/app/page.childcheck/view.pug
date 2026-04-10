@@ -6,14 +6,14 @@
         [class.current]="step === 1")
       span.step-dot([class.active]="step >= 2",
         [class.current]="step === 2")
+      span.step-dot([class.active]="step >= 3",
+        [class.current]="step === 3")
 
     //- Step 1: 자녀 정보 확인
     div(*ngIf="step === 1",
       class="step-1")
       h1.title
-        | child
-        br
-        | Check
+        | child Check
 
       p.subtitle 자녀 정보를 확인해주세요.
 
@@ -51,40 +51,44 @@
           span.btn-text 다음
           button.btn-circle('(click)'="goStep2()") →
 
-    //- Step 2: 알레르기 체크
+    //- Step 2: 19종 표준 알레르기
     div(*ngIf="step === 2",
       class="step-2")
       h1.title
-        | 알레르기
-        br
-        | Check
+        | 알레르기 Check
 
-      p.subtitle 알레르기 정보를 체크해주세요.
+      p.subtitle 식품위생법 표준 19종 알레르기를 체크해주세요.
 
-      .allergy-checks
-        .allergy-item('(click)'="toggleAllergy('egg')")
-          span.allergy-icon 🥚
-          span.allergy-label 계란
-          span.allergy-check([class.checked]="allergies.egg")
-            span(*ngIf="allergies.egg") ✓
+      .allergy-grid
+        .allergy-card(*ngFor="let item of standardAllergies",
+          [class.selected]="item.checked",
+          '(click)'="toggleStandardAllergy(item)")
+          .allergy-card-icon {{ item.icon }}
+          .allergy-card-name {{ item.name }}
+          .allergy-card-desc {{ item.desc }}
+          .allergy-card-check
+            span(*ngIf="item.checked") ✓
 
-        .allergy-item('(click)'="toggleAllergy('milk')")
-          span.allergy-icon 🥛
-          span.allergy-label 우유
-          span.allergy-check([class.checked]="allergies.milk")
-            span(*ngIf="allergies.milk") ✓
+      .btn-row
+        span.btn-back('(click)'="prevStep()") ← 이전
+        .btn-right
+          span.btn-text 다음
+          button.btn-circle('(click)'="goStep3()") →
 
-        .allergy-item('(click)'="toggleAllergy('peanut')")
-          span.allergy-icon 🥜
-          span.allergy-label 땅콩
-          span.allergy-check([class.checked]="allergies.peanut")
-            span(*ngIf="allergies.peanut") ✓
+    //- Step 3: 기타 알레르기 + 중증/대체식
+    div(*ngIf="step === 3",
+      class="step-3")
+      h1.title
+        | 추가 정보
+
+      p.subtitle 기타 알레르기 및 중증 여부를 체크해주세요.
 
       .form-group
         label.form-label 기타 알레르기
+        p.form-hint 19종에 포함되지 않는 알레르기가 있다면 입력해주세요. (예: 감자, 망고)
         .input-wrap
           input.form-input(type="text",
-            placeholder="기타 알레르기를 입력해주세요",
+            placeholder="콤마(,)로 구분하여 입력",
             [(ngModel)]="otherAllergy")
 
       .toggle-group

@@ -1,4 +1,4 @@
-import { OnInit } from '@angular/core';
+import { OnInit, ViewChild, ElementRef } from '@angular/core';
 import { Router } from '@angular/router';
 import { Service } from '@wiz/libs/portal/season/service';
 
@@ -8,6 +8,10 @@ export class Component implements OnInit {
     titleName: string = 'child';
     className: string = '';
     serverName: string = '';
+    profilePhoto: string = '';
+    uploading: boolean = false;
+
+    @ViewChild('photoInput') photoInput!: ElementRef<HTMLInputElement>;
 
     constructor(public service: Service, public router: Router) {}
 
@@ -41,6 +45,9 @@ export class Component implements OnInit {
             if (res.data.server_name) {
                 this.serverName = res.data.server_name;
             }
+            if (res.data.profile_photo) {
+                this.profilePhoto = res.data.profile_photo;
+            }
         } else if (res.code === 401) {
             // 세션 만료 시 로그인 페이지로 리다이렉트
             localStorage.removeItem('child_auto_login');
@@ -70,6 +77,58 @@ export class Component implements OnInit {
             this.menuButtons.push({ icon: '👤', label: '프로필', path: '/note/profile' });
             this.menuButtons.push({ icon: '✅', label: '가입 승인', path: '/note/approve' });
         }
+    }
+
+    public getProfilePhotoUrl(): string {
+        if (!this.profilePhoto) return '';
+        return `/wiz/api/page.note/serve_profile_photo?filename=${this.profilePhoto}&t=${Date.now()}`;
+    }
+
+    public triggerPhotoUpload() {
+        if (this.photoInput) {
+            this.photoInput.nativeElement.click();
+        }
+    }
+
+    public async onPhotoSelected(event: any) {
+        const file = event.target?.files?.[0];
+        if (!file) return;
+        this.uploading = true;
+        await this.service.render();
+
+        const formData = new FormData();
+        formData.append('photo', file);
+
+        try {
+            const response = await fetch(`/wiz/api/page.note/upload_profile_photo`, {
+                method: 'POST',
+                body: formData,
+                credentials: 'same-origin'
+            });
+            const result = await response.json();
+            if (result.code === 200) {
+                this.profilePhoto = result.data.profile_photo;
+            } else {
+                alert(result.data?.message || '업로드에 실패했습니다.');
+            }
+        } catch (e) {
+            alert('업로드 중 오류가 발생했습니다.');
+        }
+
+        this.uploading = false;
+        event.target.value = '';
+        await this.service.render();
+    }
+
+    public async deleteProfilePhoto() {
+        if (!confirm('프로필 사진을 삭제하시겠습니까?')) return;
+        const res = await wiz.call("delete_profile_photo");
+        if (res.code === 200) {
+            this.profilePhoto = '';
+        } else {
+            alert(res.data?.message || '삭제에 실패했습니다.');
+        }
+        await this.service.render();
     }
 
     public navigate(path: string) {

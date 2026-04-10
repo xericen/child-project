@@ -10,9 +10,9 @@ class Model(base):
     id               = pw.AutoField()                                                                              # 정수 자동증가
     child_id         = pw.IntegerField(null=False)                                                                 # children.id 참조
     allergy_type     = pw.CharField(
-                           max_length=10,
+                           max_length=50,
                            null=False
-                       )                                                                                           # 알레르기 종류 (계란/우유/땅콩/기타)
+                       )                                                                                           # 알레르기 종류 (19종 표준 + 기타)
     other_detail     = pw.CharField(max_length=100, null=True)                                                     # 기타 알레르기 상세 내용
     is_severe        = pw.BooleanField(default=False, constraints=[pw.SQL('DEFAULT 0')])                           # 중증 여부
     needs_substitute = pw.BooleanField(default=False, constraints=[pw.SQL('DEFAULT 0')])                           # 대체식 필요 여부

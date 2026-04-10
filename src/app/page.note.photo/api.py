@@ -2,7 +2,7 @@ import os
 import datetime
 import calendar
 import threading
-from PIL import Image
+from PIL import Image, ImageOps
 import io
 
 Photos = wiz.model("db/childcheck/photos")
@@ -27,6 +27,7 @@ JPEG_QUALITY = 85
 def _compress_image(file_data, max_width=MAX_IMAGE_WIDTH, quality=JPEG_QUALITY):
     """이미지를 리사이즈하고 JPEG로 압축하여 bytes를 반환한다."""
     img = Image.open(io.BytesIO(file_data))
+    img = ImageOps.exif_transpose(img)
     if img.mode in ('RGBA', 'P'):
         img = img.convert('RGB')
     w, h = img.size

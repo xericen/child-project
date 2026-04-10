@@ -21,12 +21,21 @@
   min-height: calc(100vh - 24px);
   box-shadow: 0 8px 32px rgba(80, 100, 220, 0.08);
   position: relative;
+  display: flex;
+  flex-direction: column;
+
+  > div {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+  }
 }
 
+// ====== 헤더 (식단 캘린더 테마 동일) ======
 .header-row {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
   margin-bottom: 16px;
 }
 
@@ -35,27 +44,14 @@
   color: #5b6ef5;
   cursor: pointer;
   font-weight: 600;
+  flex-shrink: 0;
 }
 
-.btn-dinner {
-  background: #ff7043;
-  color: #fff;
-  border: none;
-  border-radius: 20px;
-  padding: 6px 14px;
-  font-size: 0.82rem;
-  font-weight: 700;
-  cursor: pointer;
-  transition: background 0.2s;
-
-  &:hover {
-    background: #f4511e;
-  }
-
-  &:disabled {
-    background: #ccc;
-    cursor: not-allowed;
-  }
+.title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
 }
 
 .title {
@@ -63,88 +59,253 @@
   font-weight: 800;
   color: #3a4de4;
   line-height: 1.2;
-  margin-bottom: 24px;
+  margin: 0;
 }
 
-.menu-card {
-  border: 1.5px solid #e0e3f5;
-  border-radius: 16px;
-  padding: 20px;
-  background: #fafbff;
-  margin-bottom: 16px;
+.btn-dinner {
+  font-size: 0.82rem;
+  padding: 7px 16px;
+  border-radius: 20px;
+  border: 1.5px solid #3a4de4;
+  color: #3a4de4;
+  background: transparent;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.2s;
+  white-space: nowrap;
+  flex-shrink: 0;
 
-  &.allergy-danger {
-    border-color: #ef5350;
-    background: #fff5f5;
+  &:hover, &.active {
+    background: #3a4de4;
+    color: #fff;
+  }
+
+  &:disabled {
+    background: #e8e8e8;
+    border-color: #ccc;
+    color: #999;
+    cursor: not-allowed;
   }
 }
 
-.allergy-warn {
-  margin-top: 10px;
-  padding: 8px 12px;
-  background: #ffebee;
-  border: 1px solid #ef9a9a;
-  border-radius: 8px;
+// ====== 타임라인 ======
+.timeline {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  padding-left: 28px;
+  margin-bottom: 16px;
+
+  &::before {
+    content: '';
+    position: absolute;
+    left: 7px;
+    top: 8px;
+    bottom: 24px;
+    width: 1.5px;
+    background: #d0d4e8;
+  }
+}
+
+.tl-block {
+  position: relative;
+  margin-bottom: 18px;
+}
+
+.tl-dot {
+  position: absolute;
+  left: -24px;
+  top: 3px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #3a4de4;
+  border: 2.5px solid #fff;
+  box-shadow: 0 0 0 1px #d0d4e8;
+}
+
+.tl-label {
   font-size: 0.82rem;
   font-weight: 600;
-  color: #c62828;
-}
-
-.card-label {
-  font-size: 1rem;
-  font-weight: 700;
   color: #3a4de4;
-  margin-bottom: 10px;
+  margin-bottom: 6px;
+  letter-spacing: 0.03em;
 }
 
-.card-content {
-  font-size: 0.92rem;
-  color: #555;
-  line-height: 1.6;
+.tl-card {
+  background: #fff;
+  border: 1.5px solid #e0e3f5;
+  border-radius: 16px;
+  padding: 14px 16px;
+}
+
+.tl-content {
+  font-size: 0.95rem;
+  color: #1a1a2e;
+  line-height: 1.8;
+  font-weight: 500;
   white-space: pre-line;
 }
 
-// 저녁 추천
-.dinner-section {
-  margin-top: 20px;
-  padding: 16px;
-  background: #fff3e0;
-  border: 1.5px solid #ffcc80;
-  border-radius: 16px;
-}
-
-.dinner-title {
-  font-size: 0.95rem;
-  font-weight: 700;
-  color: #e65100;
-  margin-bottom: 12px;
-}
-
-.dinner-loading {
+// ====== 음식 행 (분석 결과) ======
+.food-row {
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 10px;
-  padding: 12px 0;
-  font-size: 0.85rem;
-  color: #888;
+  padding: 5px 0;
+
+  &:not(:last-of-type) {
+    border-bottom: 0.5px solid #f0f0f6;
+  }
+
+  &.substitute {
+    opacity: 0.45;
+  }
 }
 
-.dinner-error {
-  padding: 12px;
-  background: #fff;
-  border: 1px solid #ffe0b2;
+.food-name {
+  font-size: 0.95rem;
+  color: #1a1a2e;
+  flex: 1;
+  font-weight: 500;
+}
+
+.food-kcal {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #3a4de4;
+  white-space: nowrap;
+  margin-left: 10px;
+}
+
+// ====== 끼니 소계 ======
+.kcal-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 0.5px solid #f0f0f6;
+}
+
+.kcal-label {
+  font-size: 0.8rem;
+  color: #999;
+}
+
+.kcal-val {
+  font-size: 0.85rem;
+  color: #3a4de4;
+  font-weight: 600;
+}
+
+// ====== 알레르기 인라인 ======
+.allergy-inline {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 8px 12px;
+  margin-top: 10px;
+  background: #FEF2F2;
   border-radius: 10px;
   font-size: 0.85rem;
-  color: #999;
-  text-align: center;
+  font-weight: 600;
+  color: #991B1B;
+  line-height: 1.4;
 }
 
-// 스피너
+// ====== 하단 요약 카드 ======
+.summary-card {
+  background: #3a4de4;
+  border-radius: 18px;
+  padding: 18px 20px;
+  margin-top: 4px;
+  margin-bottom: 8px;
+}
+
+.summary-title {
+  font-size: 0.8rem;
+  color: #aab4f0;
+  margin-bottom: 14px;
+  font-weight: 600;
+}
+
+.summary-row {
+  display: flex;
+  justify-content: space-between;
+}
+
+.summary-item {
+  text-align: center;
+
+  .lbl {
+    font-size: 0.72rem;
+    color: #aab4f0;
+    margin-bottom: 4px;
+    font-weight: 600;
+  }
+
+  .val {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #ffffff;
+
+    .unit {
+      font-size: 0.7rem;
+      color: #aab4f0;
+      margin-left: 2px;
+    }
+  }
+}
+
+.progress-wrap {
+  margin-top: 14px;
+}
+
+.progress-label-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.72rem;
+  color: #aab4f0;
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+
+.progress-bar {
+  height: 5px;
+  background: rgba(255,255,255,0.2);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: #ffffff;
+  transition: width 0.5s ease;
+}
+
+// ====== 로딩 ======
+.loading-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  gap: 12px;
+
+  p {
+    color: #999;
+    font-size: 0.9rem;
+  }
+}
+
 .spinner {
-  width: 20px;
-  height: 20px;
-  border: 3px solid #eee;
-  border-top: 3px solid #ff7043;
+  width: 24px;
+  height: 24px;
+  border: 3px solid #e8e8e8;
+  border-top: 3px solid #3a4de4;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -153,485 +314,372 @@
   to { transform: rotate(360deg); }
 }
 
-// 3단계 분석 카드
-.stage-card {
-  background: #fff;
-  border: 1px solid #ffe0b2;
-  border-radius: 12px;
-  margin-bottom: 12px;
-  overflow: hidden;
-
-  &:last-child {
-    margin-bottom: 0;
-  }
-}
-
-.stage-header {
+.dinner-loading-wrap {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
-  background: #fff8f0;
-  border-bottom: 1px solid #ffe0b2;
-}
-
-.stage-num {
-  display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: #ff7043;
-  color: #fff;
-  font-size: 0.75rem;
-  font-weight: 700;
-}
-
-.stage-title {
-  font-size: 0.85rem;
-  font-weight: 700;
-  color: #e65100;
-}
-
-.stage-badge {
-  font-size: 0.65rem;
-  font-weight: 600;
-  color: #fff;
-  background: #ff7043;
-  padding: 1px 8px;
-  border-radius: 8px;
-  margin-left: auto;
-}
-
-.stage-body {
-  padding: 12px 14px;
-}
-
-// Stage 1: 영양소 분석
-.meal-analysis {
-  margin-bottom: 10px;
-
-  &:last-child {
-    margin-bottom: 0;
-  }
-}
-
-.meal-type-label {
-  font-size: 0.8rem;
-  font-weight: 700;
-  color: #5b6ef5;
-  margin-bottom: 4px;
-}
-
-.meal-items {
-  padding-left: 8px;
-}
-
-.meal-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 2px 0;
-  font-size: 0.78rem;
-  color: #666;
-}
-
-.item-name {
+  gap: 10px;
+  padding: 60px 0;
+  font-size: 0.9rem;
+  color: #999;
   flex: 1;
 }
 
-.item-cal {
-  color: #e65100;
-  font-weight: 600;
-  font-size: 0.75rem;
-}
-
-.total-row {
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px dashed #ffe0b2;
-}
-
-.total-label {
-  font-size: 0.8rem;
-  font-weight: 700;
-  color: #333;
-  margin-bottom: 6px;
-}
-
-.total-nutrients {
+.dinner-error {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px;
+  background: #FEF2F2;
+  border: 1px solid #FECACA;
+  border-radius: 14px;
+  font-size: 0.9rem;
+  color: #991B1B;
 }
 
-.nutrient-tag {
-  font-size: 0.72rem;
-  color: #666;
-  background: #f5f5f5;
-  padding: 2px 8px;
-  border-radius: 10px;
+// ====== 빈 상태 ======
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 0;
+  gap: 8px;
 
+  .empty-icon {
+    font-size: 2.5rem;
+    opacity: 0.4;
+  }
+
+  p {
+    font-size: 0.95rem;
+    color: #bbb;
+  }
+}
+
+// ====== 페이지 네비게이션 ======
+.page-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 16px;
+  padding-top: 8px;
+}
+
+.dots {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
+
+.dot-ind {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.12);
+  transition: all 0.25s;
+
+  &.active {
+    width: 18px;
+    border-radius: 4px;
+    background: #3a4de4;
+  }
+}
+
+.next-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #3a4de4;
+  cursor: pointer;
+  padding: 7px 14px;
+  border-radius: 20px;
+  border: 1.5px solid #d0d7f7;
+  background: #fff;
+  transition: all 0.15s;
+
+  &:hover {
+    background: #eef2ff;
+    border-color: #3a4de4;
+  }
+
+  svg { flex-shrink: 0; }
+}
+
+.prev-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #777;
+  cursor: pointer;
+  padding: 7px 14px;
+  border-radius: 20px;
+  border: 1.5px solid #E0E0E0;
+  background: #fff;
+  transition: all 0.15s;
+
+  &:hover {
+    border-color: #3a4de4;
+    color: #3a4de4;
+  }
+
+  svg { flex-shrink: 0; }
+}
+
+.spacer {
+  width: 80px;
+}
+
+// ====== 영양소 카드 ======
+.nutrient-card {
+  flex: 1;
+}
+
+.nutrient-title {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: #1a1a2e;
+  margin: 0 0 4px;
+}
+
+.nutrient-sub {
+  font-size: 0.85rem;
+  color: #999;
+  margin: 0 0 18px;
+}
+
+.nutrient-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.nutrient-box {
+  background: #f8f9ff;
+  border-radius: 16px;
+  padding: 14px;
+  border: 1.5px solid #e0e3f5;
+}
+
+.nb-label {
+  font-size: 0.78rem;
+  color: #999;
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+
+.nb-value {
   strong {
-    color: #e65100;
+    font-size: 1.4rem;
+    font-weight: 800;
+    color: #1a1a2e;
+  }
+  span {
+    font-size: 0.78rem;
+    color: #999;
     margin-left: 2px;
   }
 }
 
-// Stage 2: 부족분 분석
-.child-info {
-  margin-bottom: 10px;
-}
-
-.child-badge {
-  font-size: 0.82rem;
-  font-weight: 600;
-  color: #333;
-}
-
-.deficit-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.deficit-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.deficit-label {
-  font-size: 0.75rem;
-  color: #666;
-  min-width: 48px;
-  font-weight: 600;
-}
-
-.deficit-bar-wrap {
-  flex: 1;
-  height: 8px;
-  background: #f0f0f0;
-  border-radius: 4px;
+.nb-bar {
+  margin-top: 6px;
+  height: 4px;
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 2px;
   overflow: hidden;
 }
 
-.deficit-bar {
+.nb-fill {
   height: 100%;
-  background: #ff7043;
-  border-radius: 4px;
+  border-radius: 2px;
   transition: width 0.5s ease;
-
-  &.full {
-    background: #43a047;
-  }
-
-  &.low {
-    background: #ef5350;
-  }
+  background: #3a4de4;
 }
 
-.deficit-values {
-  font-size: 0.7rem;
-  color: #888;
-  min-width: 90px;
-  text-align: right;
-  white-space: nowrap;
-}
+.nutrient-box.n-ok .nb-fill { background: #3a4de4; }
+.nutrient-box.n-low .nb-fill { background: #F59E0B; }
+.nutrient-box.n-over .nb-fill { background: #EF4444; }
 
-.consumed {
-  font-weight: 600;
-  color: #333;
-}
-
-.separator {
-  margin: 0 1px;
-  color: #ccc;
-}
-
-.recommended {
-  color: #999;
-}
-
-.unit {
-  color: #bbb;
-  margin-left: 1px;
-}
-
-.deficit-highlight {
-  color: #ef5350;
-  font-weight: 600;
-}
-
-// 영양소 상태 배지
 .status-badge {
-  font-size: 0.7rem;
-  font-weight: 600;
-  padding: 1px 6px;
-  border-radius: 8px;
-  margin-left: 4px;
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 20px;
+  margin-top: 6px;
 }
 
-.badge-low {
-  background: #ffebee;
-  color: #ef5350;
+.badge-good {
+  background: #eef2ff;
+  color: #3a4de4;
+}
+
+.badge-warn {
+  background: #FEF3C7;
+  color: #92400E;
 }
 
 .badge-over {
-  background: #fff3e0;
-  color: #ff7043;
+  background: #FEE2E2;
+  color: #991B1B;
 }
 
-.badge-ok {
-  background: #e8f5e9;
-  color: #43a047;
-}
-
-// 행 상태 색상
-.deficit-row {
-  &.status-low .deficit-label { color: #ef5350; }
-  &.status-over .deficit-label { color: #ff7043; }
-  &.status-ok .deficit-label { color: #43a047; }
-}
-
-// Stage 3: 저녁 추천
+// ====== 저녁 추천 카드 ======
 .recommend-card {
-  padding: 10px 12px;
-  background: #f1f8e9;
-  border: 1px solid #c8e6c9;
-  border-radius: 10px;
-  margin-bottom: 8px;
-
-  &:last-child {
-    margin-bottom: 8px;
-  }
+  flex: 1;
 }
 
-.recommend-name {
-  font-size: 0.88rem;
-  font-weight: 700;
-  color: #2e7d32;
-  margin-bottom: 4px;
+.rec-title {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: #1a1a2e;
+  margin: 0 0 4px;
 }
 
-.recommend-desc {
-  font-size: 0.78rem;
-  color: #666;
-  margin-bottom: 6px;
-}
-
-.recommend-nutrients {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-bottom: 6px;
-}
-
-.nutrient-mini {
-  font-size: 0.68rem;
-  color: #555;
-  background: #e8f5e9;
-  padding: 1px 6px;
-  border-radius: 8px;
-}
-
-.recommend-reason {
-  font-size: 0.78rem;
-  color: #777;
-  line-height: 1.4;
-}
-
-.tip-box {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  padding: 10px 12px;
-  background: #fffde7;
-  border: 1px solid #fff9c4;
-  border-radius: 10px;
-}
-
-.tip-icon {
-  font-size: 1rem;
-}
-
-.tip-text {
-  font-size: 0.8rem;
-  color: #666;
-  line-height: 1.5;
-}
-
-// 알레르기 주의
-.allergy-alert-section {
-  margin-top: 20px;
-  padding: 16px;
-  background: #fff3e0;
-  border: 1.5px solid #ffcc80;
-  border-radius: 16px;
-}
-
-.alert-title {
-  font-size: 0.95rem;
-  font-weight: 700;
-  color: #e65100;
-  margin-bottom: 12px;
-}
-
-.allergy-alert-card {
-  padding: 10px 12px;
-  background: #ffffff;
-  border: 1px solid #ffe0b2;
-  border-radius: 10px;
-  margin-bottom: 8px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-
-  &:last-child {
-    margin-bottom: 0;
-  }
-}
-
-.alert-child {
-  font-weight: 700;
-  color: #333;
-  font-size: 0.88rem;
-}
-
-.alert-detail {
-  font-size: 0.82rem;
-  color: #666;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.alert-type {
-  color: #e65100;
-  font-weight: 600;
-}
-
-.alert-arrow {
-  color: #999;
-}
-
-.alert-foods {
-  color: #d84315;
-  font-weight: 600;
-}
-
-// 대체식품 추천
-.substitute-section {
-  margin-top: 16px;
-}
-
-.btn-substitute {
-  width: 100%;
-  background: #43a047;
-  color: #fff;
-  border: none;
-  border-radius: 12px;
-  padding: 12px;
-  font-size: 0.88rem;
-  font-weight: 700;
-  cursor: pointer;
-  transition: background 0.2s;
-
-  &:hover {
-    background: #388e3c;
-  }
-
-  &:disabled {
-    background: #ccc;
-    cursor: not-allowed;
-  }
-}
-
-.substitute-loading {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 0;
-  font-size: 0.85rem;
-  color: #888;
-}
-
-.substitute-results {
-  margin-top: 12px;
-}
-
-.substitute-title {
-  font-size: 0.95rem;
-  font-weight: 700;
-  color: #2e7d32;
-  margin-bottom: 12px;
-}
-
-.substitute-empty {
-  font-size: 0.85rem;
-  color: #999;
+.calorie-progress-section {
+  margin-bottom: 18px;
   text-align: center;
-  padding: 16px;
 }
 
-.substitute-card {
-  padding: 12px 14px;
-  background: #f1f8e9;
-  border: 1px solid #c8e6c9;
-  border-radius: 12px;
-  margin-bottom: 10px;
+.calorie-progress-label {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #666;
+  margin-bottom: 12px;
+}
 
-  &:last-child {
-    margin-bottom: 0;
+.calorie-ring-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 120px;
+  height: 120px;
+}
+
+.calorie-ring-bg {
+  fill: none;
+  stroke: #e0e3f5;
+  stroke-width: 8;
+}
+
+.calorie-ring-fill {
+  fill: none;
+  stroke: #3a4de4;
+  stroke-width: 8;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.8s ease;
+}
+
+.calorie-ring-text {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+
+.ring-percent {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: #1a1a2e;
+}
+
+.ring-sub {
+  font-size: 0.7rem;
+  color: #999;
+  font-weight: 600;
+}
+
+.calorie-deficit-text {
+  margin-top: 10px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #F59E0B;
+
+  &.surplus {
+    color: #3a4de4;
   }
 }
 
-.sub-child {
-  font-weight: 700;
-  color: #333;
-  font-size: 0.9rem;
-  margin-bottom: 8px;
+.rec-menu-box {
+  background: #eef2ff;
+  border-radius: 16px;
+  padding: 14px 16px;
+  margin-bottom: 12px;
 }
 
-.sub-detail {
-  margin-bottom: 6px;
-}
-
-.sub-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 4px;
-}
-
-.sub-label {
-  font-size: 0.78rem;
-  color: #888;
-  min-width: 60px;
-}
-
-.sub-value {
+.rec-menu-header {
   font-size: 0.85rem;
-  color: #555;
-}
-
-.sub-highlight {
-  color: #2e7d32;
   font-weight: 700;
+  color: #3a4de4;
+  margin-bottom: 10px;
 }
 
-.sub-reason {
-  font-size: 0.8rem;
-  color: #777;
-  line-height: 1.5;
+.rec-menu-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+
+  &:not(:last-child) {
+    border-bottom: 1px solid rgba(58, 77, 228, 0.12);
+  }
+}
+
+.rec-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #1a1a2e;
+}
+
+.rec-kcal {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #3a4de4;
+  white-space: nowrap;
+}
+
+// ====== 주재료 태그 ======
+.ingredient-section {
   margin-top: 4px;
 }
 
-.card-content {
-  ::ng-deep .green-text {
-    color: #008000;
-    font-weight: 600;
+.ingredient-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #666;
+  margin-bottom: 8px;
+}
+
+.ingredient-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ingredient-tag {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #555;
+  padding: 5px 14px;
+  border-radius: 20px;
+  border: 1px solid #e0e3f5;
+  background: #fff;
+
+  &.allergen {
+    border-color: #FECACA;
+    color: #991B1B;
+    background: #FEF2F2;
   }
+}
+
+::ng-deep .green-text {
+  color: #2E7D32;
+  font-weight: 700;
 }

@@ -2,19 +2,43 @@
   .login-wrap
     wiz-component-header()
 
-    //- 상단 영역
-    .top-area
-      .top-left
-        .badge-row
-          span.server-badge(*ngIf="serverName") {{ serverName }}
-          span.class-badge(*ngIf="className") {{ className }}
+    //- 배지 영역
+    .badge-row
+      span.server-badge(*ngIf="serverName") {{ serverName }}
+      span.class-badge(*ngIf="className") {{ className }}
 
-        h1.title
-          | {{ titleName }}
-          br
-          | Note
+    //- 프로필 섹션 (전 역할 공통)
+    .profile-section
+      .profile-avatar
+        //- 부모: 업로드 가능한 프로필 사진
+        .avatar-circle.clickable(*ngIf="role === 'parent'",
+          '(click)'="profilePhoto ? null : triggerPhotoUpload()")
+          img.avatar-img(*ngIf="profilePhoto && !uploading",
+            [src]="getProfilePhotoUrl()",
+            alt="프로필")
+          span.avatar-emoji(*ngIf="!profilePhoto && !uploading") 👶
+          span.avatar-emoji.uploading(*ngIf="uploading") ⏳
+          .avatar-actions(*ngIf="profilePhoto && !uploading")
+            button.avatar-action-btn('(click)'="triggerPhotoUpload(); $event.stopPropagation()",
+              title="사진 변경") 📷
+            button.avatar-action-btn.delete('(click)'="deleteProfilePhoto(); $event.stopPropagation()",
+              title="사진 삭제") ✕
+          input(#photoInput="",
+            type="file",
+            accept="image/*",
+            style="display:none",
+            '(change)'="onPhotoSelected($event)")
+        //- 교사
+        .avatar-circle(*ngIf="role === 'teacher'")
+          span.avatar-emoji 👩‍🏫
+        //- 원장
+        .avatar-circle(*ngIf="role === 'director'")
+          span.avatar-emoji 👤
 
-        p.subtitle 메뉴를 선택해주세요.
+      .profile-info
+        span.note-label Note
+        h1.profile-name {{ titleName }}
+        p.profile-subtitle 메뉴를 선택해주세요.
 
     .menu-buttons
       button.menu-btn(*ngFor="let btn of menuButtons",

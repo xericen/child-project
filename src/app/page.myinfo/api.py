@@ -133,16 +133,17 @@ def save_myinfo():
         for allergy in allergies:
             allergy_type = allergy.get("allergy_type", "")
             other_detail = allergy.get("other_detail", "")
-            try:
-                ChildAllergies.create(
-                    child_id=child.id,
-                    allergy_type=allergy_type,
-                    other_detail=other_detail,
-                    is_severe=is_severe,
-                    needs_substitute=needs_substitute
-                )
-            except Exception as e:
-                print("[MYINFO] 알레르기 저장 오류:", str(e))
+            if allergy_type:
+                try:
+                    ChildAllergies.create(
+                        child_id=child.id,
+                        allergy_type=allergy_type,
+                        other_detail=other_detail,
+                        is_severe=is_severe,
+                        needs_substitute=needs_substitute
+                    )
+                except Exception as e:
+                    pass
 
     wiz.response.status(200)
 

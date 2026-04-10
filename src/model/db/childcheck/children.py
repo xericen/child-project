@@ -17,5 +17,6 @@ class Model(base):
         constraints=[pw.SQL("DEFAULT '없음'")]
     )                                                                                                       # 쌍둥이 구분 (없음/쌍둥이A·B/세쌍둥이A·B·C)
     allergy_checked = pw.BooleanField(default=False, constraints=[pw.SQL('DEFAULT 0')])                     # 알레르기 체크 완료 여부
+    profile_photo = pw.CharField(max_length=255, null=True, default=None)                                   # 프로필 사진 파일명
     created_at = pw.DateTimeField(constraints=[pw.SQL('DEFAULT CURRENT_TIMESTAMP')])                        # 생성일시
     updated_at = pw.DateTimeField(constraints=[pw.SQL('DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP')])  # 수정일시

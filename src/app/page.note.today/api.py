@@ -8,6 +8,7 @@ ChildAllergies = wiz.model("db/childcheck/child_allergies")
 AllergyCategories = wiz.model("db/childcheck/allergy_categories")
 ServerMembers = wiz.model("db/login_db/server_members")
 Users = wiz.model("db/login_db/users")
+MealNutritionCache = wiz.model("db/childcheck/meal_nutrition_cache")
 MealSubstituteSelections = wiz.model("db/childcheck/meal_substitute_selections")
 
 KST = datetime.timezone(datetime.timedelta(hours=9))
@@ -120,156 +121,188 @@ def _parse_menu_names(content, age_group):
 
     return items
 
-def _ai_analyze_all_meals(meal_foods, age_group, db_kcal, db_protein, child_age):
-    """AI에게 전체 식단의 각 음식별 6대 영양소를 한 번에 추정 요청.
-    DB의 칼로리/단백질을 앵커로, 어린이집 급식 목표를 가이드로 사용."""
+def _ai_estimate_calcium_iron(food_list, age_group, child_age):
+    """AI에게 칼슘/철분만 추정 요청 (칼로리/탄단지는 이미 식약처 DB에서 확보).
+    food_list: [{'meal': '점심', 'name': '잡곡밥', 'calories': 100, 'protein': 3.5}, ...]
+    Returns: {'잡곡밥': {'calcium': 5.0, 'iron': 0.3}, ...}"""
+    if not food_list:
+        return {}
     gemini = _get_gemini()
-
-    # 연령별 목표 영양소 가져오기
+    foods_text = "\n".join([
+        f"- [{f['meal']}] {f['name']} ({f['calories']}kcal, 단백질 {f['protein']}g)"
+        for f in food_list
+    ])
     age_key = '3~5' if child_age >= 3 else '1~2'
     target = DAYCARE_TARGETS.get(age_key, DAYCARE_TARGET)
 
-    # 끼니별 음식 목록 파싱
-    parsed_meals = {}
-    all_foods = []
-    for mt, content in meal_foods.items():
-        if not content:
-            continue
-        items = _parse_menu_names(content, age_group)
-        food_names = [name for name, is_sub in items if not is_sub]
-        sub_names = [name for name, is_sub in items if is_sub]
-        parsed_meals[mt] = {'foods': food_names, 'substitutes': sub_names, 'items': items}
-        all_foods.extend([(mt, name, is_sub) for name, is_sub in items])
-
-    # AI 프롬프트 구성
-    meals_desc = []
-    for mt in ['오전간식', '점심', '오후간식']:
-        if mt in parsed_meals:
-            foods = parsed_meals[mt]['foods']
-            subs = parsed_meals[mt]['substitutes']
-            food_str = ', '.join(foods)
-            if subs:
-                food_str += f' (대체식: {", ".join(subs)})'
-            meals_desc.append(f"- {mt}: {food_str}")
-
-    meals_text = '\n'.join(meals_desc)
-
-    constraint = ""
-    # 6대 영양소 목표 텍스트 구성
-    target_text = f"""어린이집 {age_group} 급식 일일 영양 목표 (보건복지부 기준):
-  칼로리: {target.get('calories', 420)}kcal, 단백질: {target.get('protein', 11)}g, 지방: {target.get('fat', 17)}g
-  탄수화물: {target.get('carbs', 73)}g, 칼슘: {target.get('calcium', 250)}mg, 철분: {target.get('iron', 3.3)}mg"""
-
-    if db_kcal and db_protein:
-        # 지방은 DB에 없으므로 목표값을 직접 사용
-        t_fat = target.get('fat', 17)
-        t_carbs = target.get('carbs', 73)
-        t_calcium = target.get('calcium', 250)
-        t_iron = target.get('iron', 3.3)
-        constraint = f"""★★★ 필수 제약조건 (모든 수치 반드시 준수) ★★★
-{target_text}
-
-영양사 공식 수치 + 목표 기반 총합 (대체식 제외):
-  총 칼로리 = {db_kcal}kcal (±10)
-  총 단백질 = {db_protein}g (±1)
-  총 지방 = {t_fat}g (±2)
-  총 탄수화물 = {t_carbs}g (±5)
-  총 칼슘 = {t_calcium}mg (±30)
-  총 철분 = {t_iron}mg (±0.5)
-
-⚠️ 지방 주의: 어린이집 급식은 참기름, 들기름, 식용유를 반찬 조리에 많이 사용합니다.
-  - 볶음/무침류: 참기름·들기름 3~5g 추가
-  - 조림류: 식용유 2~3g 추가
-  - 국/탕류: 기름 1~2g 포함
-  따라서 지방 총합이 {t_fat}g 수준이 됩니다. 지방을 과소 추정하지 마세요.
-
-배분 순서:
-1. 먼저 위 6가지 총합을 확보
-2. 끼니별 배분 (오전간식 ~10%, 점심 ~60%, 오후간식 ~30%)
-3. 끼니 내 각 음식에 배분
-대체식은 총량 계산에서 제외합니다."""
-    elif db_kcal:
-        constraint = f"""★★★ 필수 제약조건 (반드시 준수) ★★★
-{target_text}
-
-이 식단의 영양사 공식 수치:
-- 총 칼로리 = {db_kcal}kcal (±10kcal)
-
-나머지 영양소도 위 목표에 근접하도록 배분하세요."""
-
-    prompt = f"""어린이집 {age_group} 아이의 오늘 급식 식단입니다.
-각 음식의 {age_group} 아이 1인분 기준 영양소를 추정해주세요.
+    prompt = f"""어린이집 {age_group} 아이의 급식 식단입니다. 각 음식의 **칼슘(mg)과 철분(mg)**만 추정해주세요.
+칼로리/단백질은 이미 식약처 DB에서 확인된 값입니다.
 
 식단:
-{meals_text}
+{foods_text}
 
-{constraint}
+어린이집 {age_group} 급식 일일 목표: 칼슘 {target.get('calcium', 250)}mg, 철분 {target.get('iron', 3.3)}mg
 
-각 음식별로 아래 6대 영양소를 추정하세요:
-- calories (kcal), protein (g), fat (g), carbs (g), calcium (mg), iron (mg)
+참고사항:
+- 쌀밥/잡곡밥: 칼슘 낮음(2~5mg), 철분 낮음(0.1~0.3mg)
+- 국/탕류: 칼슘 보통(10~30mg), 철분 보통(0.3~0.8mg)
+- 육류(닭/소/돼지): 칼슘 낮음(5~15mg), 철분 높음(0.5~1.5mg)
+- 유제품(우유/요거트/치즈): 칼슘 높음(100~200mg), 철분 매우 낮음(0~0.1mg)
+- 김치류: 칼슘 보통(15~30mg), 철분 보통(0.3~0.5mg)
+- 두유: 칼슘 높음(30~50mg), 철분 보통(0.3~0.5mg)
+- 고구마: 칼슘 낮음(10~20mg), 철분 보통(0.3~0.5mg)
+- 과일류: 칼슘 낮음(3~10mg), 철분 낮음(0.1~0.3mg)
 
-이 식단은 시·구청 영양사가 6대 영양소 모두 목표에 맞춰 설계한 것입니다.
-각 음식의 영양소를 합산하면 위 제약조건의 목표값에 근접해야 합니다.
+모든 수치는 {age_group} 아이 1인분 기준입니다.
+전체 합산이 일일 목표에 근접하도록 배분해주세요.
 
 반드시 아래 JSON 형식으로만 응답하세요:
-{{
-  "meals": {{
-    "끼니이름": [
-      {{"name": "음식이름", "calories": 0, "protein": 0, "fat": 0, "carbs": 0, "calcium": 0, "iron": 0, "category": "카테고리", "is_substitute": false}}
-    ]
-  }}
-}}"""
+{{"음식이름": {{"calcium": 0, "iron": 0}}, ...}}"""
 
-    system = "당신은 한국 어린이집 급식 영양 분석 전문가입니다. 보건복지부 영유아 급식관리지침 기준으로 정확하게 영양소를 추정합니다. JSON만 응답하세요."
+    system = "어린이집 급식 영양 분석 전문가입니다. 칼슘과 철분 수치만 정확히 추정합니다. JSON만 응답하세요."
+    try:
+        result = gemini.ask_json(prompt, system_instruction=system)
+        if isinstance(result, dict):
+            print(f"[AI추정] 칼슘/철분 {len(result)}개 음식 추정 완료")
+            return result
+    except Exception as e:
+        print(f"[AI추정] 칼슘/철분 추정 실패: {e}")
+    return {}
 
-    result = gemini.ask_json(prompt, system_instruction=system)
 
-    # 결과 파싱
+def _ai_analyze_all_meals(meal_foods, age_group, db_kcal, db_protein, child_age):
+    """2단계 영양분석 파이프라인:
+    [Phase 1] 식약처 DB → 칼로리/탄단지/칼슘/철분 (per 100g → 1인분 환산)
+    [Phase 2] 식단표 열량 기준 비율 보정 + total 열량/단백질은 DB값 직접 사용"""
+
+    print(f"[영양분석] ===== 2단계 파이프라인 시작 =====")
+    print(f"[영양분석] 연령그룹: {age_group}, 나이: {child_age}세")
+    print(f"[영양분석] 식단표 등록값 → 열량: {db_kcal}kcal, 단백질: {db_protein}g")
+
+    age_key = '3~5' if child_age >= 3 else '1~2'
+    target = DAYCARE_TARGETS.get(age_key, DAYCARE_TARGET)
+
+    # ── Phase 1: 식약처 DB에서 칼로리/탄단지 조회 ──
+    print(f"[Phase1] 식약처 DB 검색 시작...")
+    nutrition_api = wiz.model("nutrition_api")
+
+    all_items_by_meal = {}  # {meal_type: [item_dict, ...]}
+
+    for mt in ['오전간식', '점심', '오후간식']:
+        content = meal_foods.get(mt, '')
+        if not content:
+            continue
+
+        pipeline_result = nutrition_api.analyze_meal_pipeline(content, age_group)
+
+        items = []
+        api_count = 0
+        ai_count = 0
+
+        for menu in pipeline_result.get('menus', []):
+            nutrition = menu.get('nutrition') or {}
+            is_sub = menu.get('is_substitute', False)
+            is_estimated = menu.get('is_estimated', False)
+            found = menu.get('found', False)
+
+            if not found:
+                source = 'error'
+            elif is_estimated:
+                source = 'ai_estimate'
+                ai_count += 1
+            else:
+                source = 'api'
+                api_count += 1
+
+            # Phase 1: 식약처 DB에서 칼로리/탄단지/칼슘/철분 모두 가져옴
+            item = {
+                'name': menu['name'],
+                'source': source,
+                'is_substitute': is_sub,
+                'is_estimated': is_estimated,
+                'matched_name': nutrition.get('name', menu['name']),
+                'serving_size': nutrition.get('serving_size', '1인분'),
+                'serving_ratio': nutrition.get('serving_ratio', 1.0),
+                'category': nutrition.get('category', ''),
+                'calories': round(float(nutrition.get('calories', 0)), 1),
+                'protein': round(float(nutrition.get('protein', 0)), 1),
+                'fat': round(float(nutrition.get('fat', 0)), 1),
+                'carbs': round(float(nutrition.get('carbohydrate', nutrition.get('carbs', 0))), 1),
+                'calcium': round(float(nutrition.get('calcium', 0)), 1),
+                'iron': round(float(nutrition.get('iron', 0)), 1),
+            }
+            items.append(item)
+
+        print(f"[Phase1] {mt}: 식약처DB {api_count}건, AI보완 {ai_count}건")
+        for item in items:
+            if not item['is_substitute']:
+                print(f"[Phase1]   {item['name']} → {item['matched_name']} ({item['source']}) cal={item['calories']} p={item['protein']} f={item['fat']} c={item['carbs']}")
+
+        all_items_by_meal[mt] = items
+
+    # ── Phase 2: 식단표 등록 열량/단백질에 맞춰 비례 스케일링 ──
+    # 대체식 제외한 합계 계산
+    raw_total_cal = 0.0
+    raw_total_prot = 0.0
+    raw_total_fat = 0.0
+    raw_total_carbs = 0.0
+    raw_total_calcium = 0.0
+    raw_total_iron = 0.0
+    for mt_items in all_items_by_meal.values():
+        for item in mt_items:
+            if not item['is_substitute']:
+                raw_total_cal += item['calories']
+                raw_total_prot += item['protein']
+                raw_total_fat += item['fat']
+                raw_total_carbs += item['carbs']
+                raw_total_calcium += item['calcium']
+                raw_total_iron += item['iron']
+
+    print(f"[Phase2] API RAW 합계: cal={round(raw_total_cal, 1)} prot={round(raw_total_prot, 1)} fat={round(raw_total_fat, 1)} carbs={round(raw_total_carbs, 1)} ca={round(raw_total_calcium, 1)} fe={round(raw_total_iron, 1)}")
+
+    # 스케일링 비율 계산
+    cal_ratio = 1.0
+    prot_ratio = 1.0
+    if db_kcal and db_kcal > 0 and raw_total_cal > 0:
+        cal_ratio = db_kcal / raw_total_cal
+        print(f"[Phase2] 열량 스케일: {round(raw_total_cal, 1)}kcal → {db_kcal}kcal (×{cal_ratio:.3f})")
+    if db_protein and db_protein > 0 and raw_total_prot > 0:
+        prot_ratio = db_protein / raw_total_prot
+        print(f"[Phase2] 단백질 스케일: {round(raw_total_prot, 1)}g → {db_protein}g (×{prot_ratio:.3f})")
+
+    # 스케일링 적용: 모든 영양소를 열량비율로, 단백질만 단백질비율로
+    for mt_items in all_items_by_meal.values():
+        for item in mt_items:
+            if item['is_substitute']:
+                continue
+            item['calories'] = round(item['calories'] * cal_ratio, 1)
+            item['protein'] = round(item['protein'] * prot_ratio, 1)
+            item['fat'] = round(item['fat'] * cal_ratio, 1)
+            item['carbs'] = round(item['carbs'] * cal_ratio, 1)
+            item['calcium'] = round(item['calcium'] * cal_ratio, 1)
+            item['iron'] = round(item['iron'] * cal_ratio, 1)
+
+    # 스케일링 후 합계 확인
+    scaled_cal = sum(item['calories'] for mt_items in all_items_by_meal.values() for item in mt_items if not item['is_substitute'])
+    scaled_prot = sum(item['protein'] for mt_items in all_items_by_meal.values() for item in mt_items if not item['is_substitute'])
+    scaled_fat = sum(item['fat'] for mt_items in all_items_by_meal.values() for item in mt_items if not item['is_substitute'])
+    scaled_carbs = sum(item['carbs'] for mt_items in all_items_by_meal.values() for item in mt_items if not item['is_substitute'])
+    scaled_calcium = sum(item['calcium'] for mt_items in all_items_by_meal.values() for item in mt_items if not item['is_substitute'])
+    scaled_iron = sum(item['iron'] for mt_items in all_items_by_meal.values() for item in mt_items if not item['is_substitute'])
+    print(f"[Phase2] 스케일링 후: cal={round(scaled_cal, 1)} prot={round(scaled_prot, 1)} fat={round(scaled_fat, 1)} carbs={round(scaled_carbs, 1)} ca={round(scaled_calcium, 1)} fe={round(scaled_iron, 1)}")
+
+    # ── 결과 조립 ──
     stage1_meals = []
     total = {k: 0.0 for k in DAYCARE_TARGET}
 
-    if not isinstance(result, dict) or 'meals' not in result:
-        print(f"[AI분석] 파싱 실패: {type(result)}")
-        # fallback: 빈 결과
-        for mt in ['오전간식', '점심', '오후간식']:
-            if mt in parsed_meals:
-                items = [{'name': n, 'calories': 0, 'protein': 0, 'fat': 0, 'carbs': 0, 'calcium': 0, 'iron': 0, 'source': 'error', 'is_substitute': is_sub, 'matched_name': n, 'category': '', 'serving_size': '1인분', 'serving_ratio': 1.0} for n, is_sub in parsed_meals[mt]['items']]
-                stage1_meals.append({'meal_type': mt, 'items': items, 'subtotal': {k: 0 for k in DAYCARE_TARGET}})
-        return {'meals': stage1_meals, 'total': total}
-
-    ai_meals = result['meals']
     for mt in ['오전간식', '점심', '오후간식']:
-        if mt not in parsed_meals:
+        items = all_items_by_meal.get(mt, [])
+        if not items:
             continue
-        ai_items = ai_meals.get(mt, [])
-        # AI 결과를 이름으로 매핑
-        ai_map = {}
-        for ai_item in ai_items:
-            if isinstance(ai_item, dict):
-                ai_map[ai_item.get('name', '')] = ai_item
 
-        items = []
         sub_total = {k: 0.0 for k in DAYCARE_TARGET}
-        for name, is_sub in parsed_meals[mt]['items']:
-            ai_data = ai_map.get(name, {})
-            item = {
-                'name': name,
-                'source': 'ai',
-                'is_substitute': is_sub,
-                'is_estimated': False,
-                'matched_name': name,
-                'serving_size': '1인분',
-                'serving_ratio': 1.0,
-                'category': ai_data.get('category', ''),
-                'calories': round(float(ai_data.get('calories', 0)), 1),
-                'protein': round(float(ai_data.get('protein', 0)), 1),
-                'fat': round(float(ai_data.get('fat', 0)), 1),
-                'carbs': round(float(ai_data.get('carbs', 0)), 1),
-                'calcium': round(float(ai_data.get('calcium', 0)), 1),
-                'iron': round(float(ai_data.get('iron', 0)), 1),
-            }
-            items.append(item)
-            if not is_sub:
+        for item in items:
+            if not item['is_substitute']:
                 for k in DAYCARE_TARGET:
                     sub_total[k] = round(sub_total[k] + item.get(k, 0), 1)
 
@@ -281,58 +314,17 @@ def _ai_analyze_all_meals(meal_foods, age_group, db_kcal, db_protein, child_age)
         for k in total:
             total[k] = round(total[k] + sub_total.get(k, 0), 1)
 
-    # DB 앵커 보정: AI 합계가 DB 기준과 5% 이상 차이나면 비례 스케일링
-    if db_kcal and db_kcal > 0 and total['calories'] > 0:
-        cal_ratio = db_kcal / total['calories']
-        prot_ratio = (db_protein / total['protein']) if (db_protein and total['protein'] > 0) else cal_ratio
-        diff_pct = abs(1 - cal_ratio) * 100
-        if diff_pct > 5:
-            print(f"[AI분석] DB보정: AI={total['calories']}kcal vs DB={db_kcal}kcal ({diff_pct:.0f}% 차이) → 스케일링 적용")
-            for meal_data in stage1_meals:
-                sub = {k: 0.0 for k in DAYCARE_TARGET}
-                for item in meal_data['items']:
-                    if item.get('is_substitute'):
-                        continue
-                    item['calories'] = round(item['calories'] * cal_ratio, 1)
-                    item['protein'] = round(item['protein'] * prot_ratio, 1)
-                    item['fat'] = round(item['fat'] * cal_ratio, 1)
-                    item['carbs'] = round(item['carbs'] * cal_ratio, 1)
-                    item['calcium'] = round(item['calcium'] * cal_ratio, 1)
-                    item['iron'] = round(item['iron'] * cal_ratio, 1)
-                    for k in DAYCARE_TARGET:
-                        sub[k] = round(sub[k] + item.get(k, 0), 1)
-                meal_data['subtotal'] = sub
-            # 합계 재계산
-            total = {k: 0.0 for k in DAYCARE_TARGET}
-            for meal_data in stage1_meals:
-                for k in total:
-                    total[k] = round(total[k] + meal_data['subtotal'].get(k, 0), 1)
-            print(f"[AI분석] DB보정 후: {total}")
+    # DB 값으로 total 열량/단백질 강제 고정 (개별 스케일링 합산의 반올림 오차 제거)
+    if db_kcal and db_kcal > 0:
+        total['calories'] = float(db_kcal)
+    if db_protein and db_protein > 0:
+        total['protein'] = float(db_protein)
 
-    # 목표 영양소 스케일링: 지방/탄수/칼슘/철분을 영양사 설계 목표값에 맞춤
-    # DB에 칼로리/단백질만 있고 나머지 4종은 없으므로, 보건복지부 급식 목표를 기준으로 보정
-    target_scale = {
-        'fat': target.get('fat', 17),
-        'carbs': target.get('carbs', 73),
-        'calcium': target.get('calcium', 250),
-        'iron': target.get('iron', 3.3),
-    }
-    scaled_any = False
-    for nutrient, target_val in target_scale.items():
-        if total.get(nutrient, 0) > 0 and target_val > 0:
-            ratio = target_val / total[nutrient]
-            if abs(1 - ratio) > 0.05:  # 5% 이상 차이
-                scaled_any = True
-                print(f"[AI분석] 목표보정 {nutrient}: AI={total[nutrient]} → 목표={target_val} (×{ratio:.2f})")
-                for meal_data in stage1_meals:
-                    for item in meal_data['items']:
-                        if not item.get('is_substitute'):
-                            item[nutrient] = round(item[nutrient] * ratio, 1)
-                    meal_data['subtotal'][nutrient] = round(
-                        sum(item[nutrient] for item in meal_data['items'] if not item.get('is_substitute')), 1)
-                total[nutrient] = round(sum(m['subtotal'][nutrient] for m in stage1_meals), 1)
-    if scaled_any:
-        print(f"[AI분석] 최종: cal={total['calories']} prot={total['protein']} fat={total['fat']} carbs={total['carbs']} ca={total['calcium']} fe={total['iron']}")
+    print(f"[영양분석] ===== 최종 결과 =====")
+    print(f"[영양분석] cal={total['calories']}kcal prot={total['protein']}g fat={total['fat']}g carbs={total['carbs']}g ca={total['calcium']}mg fe={total['iron']}mg")
+    api_total = sum(1 for mt_items in all_items_by_meal.values() for item in mt_items if item['source'] == 'api' and not item['is_substitute'])
+    ai_total = sum(1 for mt_items in all_items_by_meal.values() for item in mt_items if item['source'] != 'api' and not item['is_substitute'])
+    print(f"[영양분석] 식약처DB: {api_total}건, AI보완: {ai_total}건")
 
     return {'meals': stage1_meals, 'total': total}
 
@@ -410,6 +402,12 @@ DAYCARE_TARGETS = {
 }
 DAYCARE_TARGET = DAYCARE_TARGETS['1~2']
 
+# 연령별 하루 전체 권장 섭취량 (급식표 기준)
+DAILY_TARGETS = {
+    '1~2': {'calories': 900, 'protein': 20, 'fat': 30, 'carbs': 130, 'calcium': 450, 'iron': 6},
+    '3~5': {'calories': 1400, 'protein': 25, 'fat': 45, 'carbs': 200, 'calcium': 550, 'iron': 7},
+}
+
 import re
 
 KEYWORD_ALIASES = {
@@ -426,12 +424,171 @@ KEYWORD_ALIASES = {
 }
 
 def _keyword_in_content(keyword, content):
+    """키워드가 식단 content에 매칭되는지 확인.
+    1. 직접 문자열 포함 → 'direct'
+    2. KEYWORD_ALIASES 별칭 매칭 → 'alias'
+    3. AI 재료 캐시 매칭 → 'ingredient'
+    4. 미매칭 → 'unknown'
+    Returns: (matched: bool, confidence: str)
+    """
     if keyword in content:
-        return True
+        return True, 'direct'
     for alias in KEYWORD_ALIASES.get(keyword, []):
         if alias in content:
-            return True
-    return False
+            return True, 'alias'
+    # AI 재료 캐시 확인
+    matched_dishes = _get_ingredient_cache(keyword)
+    if matched_dishes:
+        for dish in matched_dishes:
+            if dish in content:
+                return True, 'ingredient'
+    return False, 'unknown'
+
+_ingredient_cache_store = {}
+
+def _extract_all_food_names(content):
+    """식단 content에서 모든 음식명 추출 (마커 제거, 번호 제거)"""
+    CLEAN_PATTERN = re.compile(r'[ⓢⓄ①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳\d.]')
+    GREEN_PATTERN = re.compile(r'\{\{green:(.*?)\}\}')
+    names = set()
+    for line in content.replace('\r\n', '\n').split('\n'):
+        line = line.strip()
+        if not line:
+            continue
+        for m in GREEN_PATTERN.finditer(line):
+            gn = CLEAN_PATTERN.sub('', m.group(1)).strip()
+            if gn and gn not in ('/', '-'):
+                names.add(gn)
+        cleaned = GREEN_PATTERN.sub('', line).strip()
+        cleaned = CLEAN_PATTERN.sub('', cleaned).strip()
+        if cleaned and cleaned not in ('/', '-'):
+            names.add(cleaned)
+    return names
+
+def _build_monthly_allergy_cache(server_id, keywords):
+    """월간 전체 식단에서 기타 알레르기 키워드가 포함될 수 있는 음식을 Gemini로 일괄 분석하고 캐시.
+    keywords: 표준 19종에 해당하지 않는 기타 알레르기 키워드 리스트
+    Returns: {keyword: [matched_dish1, ...], ...}
+    """
+    if not keywords:
+        return {}
+
+    today = datetime.datetime.now(KST).date()
+    month_str = today.strftime("%Y-%m")
+    cache_fs = wiz.project.fs("data", "allergy_ingredient_cache", str(server_id), month_str)
+    cache_file = "batch.json"
+
+    # 기존 캐시 로드
+    cached = {}
+    try:
+        if cache_fs.exists(cache_file):
+            cached = cache_fs.read.json(cache_file, default={})
+    except Exception:
+        pass
+
+    # 누락된 키워드만 분석
+    missing_keywords = [kw for kw in keywords if kw not in cached]
+    if not missing_keywords:
+        # 인메모리 캐시 갱신
+        for kw in keywords:
+            _ingredient_cache_store[kw] = cached.get(kw, [])
+        return cached
+
+    # 이번 달 전체 식단 음식명 수집
+    first_of_month = today.replace(day=1)
+    if today.month == 12:
+        next_month_first = today.replace(year=today.year + 1, month=1, day=1)
+    else:
+        next_month_first = today.replace(month=today.month + 1, day=1)
+    last_of_month = next_month_first - datetime.timedelta(days=1)
+
+    all_foods = set()
+    try:
+        meals = Meals.select().where(
+            (Meals.server_id == server_id) &
+            (Meals.meal_date >= first_of_month) &
+            (Meals.meal_date <= last_of_month)
+        )
+        for meal in meals:
+            if meal.content:
+                all_foods.update(_extract_all_food_names(meal.content))
+    except Exception as e:
+        print(f"[알레르기캐시] 식단 조회 실패: {e}")
+
+    if not all_foods:
+        for kw in missing_keywords:
+            cached[kw] = []
+        return cached
+
+    # Gemini에 한 번에 질문
+    foods_list = sorted(all_foods)
+    keywords_str = ", ".join(missing_keywords)
+    foods_str = ", ".join(foods_list)
+
+    prompt = f"""다음은 어린이집 한 달 식단의 음식 목록입니다:
+{foods_str}
+
+아이가 다음 식재료에 알레르기가 있습니다: {keywords_str}
+
+각 알레르기 키워드에 대해, 위 음식 목록 중 해당 식재료가 **재료로 포함될 가능성이 높은** 음식을 모두 찾아주세요.
+음식 이름에 직접적으로 포함된 경우뿐만 아니라, 일반적으로 해당 재료가 들어가는 음식도 포함해주세요.
+예) "땅콩" → ["카레라이스", "쿠키"] (카레에 땅콩버터가 들어갈 수 있고, 쿠키에 견과류가 포함될 수 있음)
+
+반드시 아래 JSON 형식으로만 응답하세요:
+{{"{missing_keywords[0]}": ["해당 음식1", "해당 음식2"], ...}}
+해당 음식이 없으면 빈 배열을 반환하세요."""
+
+    try:
+        gemini = _get_gemini()
+        result = gemini.ask_json(prompt, system_instruction="식품 알레르기 전문가입니다. JSON만 응답하세요.")
+        if isinstance(result, dict):
+            for kw in missing_keywords:
+                matched = result.get(kw, [])
+                if isinstance(matched, list):
+                    cached[kw] = [str(d) for d in matched]
+                else:
+                    cached[kw] = []
+            print(f"[알레르기캐시] Gemini 일괄 분석 완료: {len(missing_keywords)}개 키워드, {len(foods_list)}개 음식")
+        else:
+            for kw in missing_keywords:
+                cached[kw] = []
+    except Exception as e:
+        print(f"[알레르기캐시] Gemini 분석 실패: {e}")
+        for kw in missing_keywords:
+            cached[kw] = []
+
+    # 파일 캐시 저장
+    try:
+        cache_fs.write.json(cache_file, cached)
+    except Exception as e:
+        print(f"[알레르기캐시] 캐시 저장 실패: {e}")
+
+    # 인메모리 캐시 갱신
+    for kw in keywords:
+        _ingredient_cache_store[kw] = cached.get(kw, [])
+
+    return cached
+
+def _get_ingredient_cache(keyword):
+    """월간 일괄 캐시에서 키워드의 매칭 음식 목록을 로드"""
+    if keyword in _ingredient_cache_store:
+        return _ingredient_cache_store[keyword]
+    try:
+        server_id = wiz.session.get("server_id") or wiz.session.get("join_server_id")
+        if not server_id:
+            return []
+        month_str = datetime.date.today().strftime("%Y-%m")
+        cache_fs = wiz.project.fs("data", "allergy_ingredient_cache", str(server_id), month_str)
+        cache_file = "batch.json"
+        if cache_fs.exists(cache_file):
+            data = cache_fs.read.json(cache_file, default={})
+            matched = data.get(keyword, [])
+            _ingredient_cache_store[keyword] = matched
+            return matched
+    except Exception:
+        pass
+    _ingredient_cache_store[keyword] = []
+    return []
 
 _ai_allergy_cache = {}
 
@@ -490,6 +647,12 @@ def _get_daycare_target(age):
     if age >= 3:
         return DAYCARE_TARGETS['3~5']
     return DAYCARE_TARGETS['1~2']
+
+def _get_daily_target(age):
+    """자녀 나이 기반 하루 전체 권장 섭취량 반환"""
+    if age >= 3:
+        return DAILY_TARGETS['3~5']
+    return DAILY_TARGETS['1~2']
 
 # 연령별 연결 메뉴 쌍 (1~2세 메뉴, 3~5세 메뉴) — nutrition_api.AGE_MENU_PAIRS와 동기화
 _AGE_MENU_PAIRS = [('백김치', '배추김치')]
@@ -827,6 +990,20 @@ def get_today_menu():
         except Exception:
             pass
 
+    # 19종 미해당 기타 키워드 → 월간 AI 일괄 캐시 빌드
+    if other_keywords:
+        custom_kw = set()
+        for kw in set(other_keywords):
+            if ALLERGY_TYPE_TO_NUMBERS.get(kw):
+                continue
+            if kw in KEYWORD_ALIASES:
+                continue
+            ai_nums = _ai_allergy_cache.get(kw, [])
+            if not ai_nums:
+                custom_kw.add(kw)
+        if custom_kw:
+            _build_monthly_allergy_cache(server_id, list(custom_kw))
+
     allergy_dishes = {}
     if child_allergy_nums or other_keywords:
         for meal_type in meal_allergy:
@@ -855,9 +1032,10 @@ def get_today_menu():
                 for num in overlap:
                     matched_names.add(ALLERGY_MAP.get(num, str(num)))
 
-            # 3. 기타 알레르기 키워드 텍스트 매칭
+            # 3. 기타 알레르기 키워드 텍스트 매칭 (식단명 → 별칭 → 재료캐시)
             for kw in other_keywords:
-                if _keyword_in_content(kw, content):
+                matched, confidence = _keyword_in_content(kw, content)
+                if matched:
                     matched_names.add(kw)
 
             if matched_names:
@@ -891,10 +1069,31 @@ def get_today_menu():
                 elif var_name == 'afternoon_snack':
                     afternoon_snack = _apply_parent_content(afternoon_snack, mid, age_group)
 
+    # 끼니별 칼로리 계산 (연령에 따라 kcal vs kcal_35 선택)
+    child_age_for_kcal = 3
+    if role == 'parent':
+        child_age_for_kcal = child_age
+    meal_kcal = {}
+    daily_total = None
+    for m in meals:
+        if child_age_for_kcal >= 3:
+            if m.get('kcal_35'):
+                daily_total = m['kcal_35']
+        else:
+            if m.get('kcal'):
+                daily_total = m['kcal']
+    if daily_total and daily_total > 0:
+        # 끼니별 배분 비율 (어린이집 급식 기준: 오전간식 10%, 점심 35%, 오후간식 10%)
+        ratios = {'오전간식': 0.10, '점심': 0.35, '오후간식': 0.10}
+        total_ratio = sum(ratios.values())
+        for mt, ratio in ratios.items():
+            meal_kcal[mt] = round(daily_total * ratio / total_ratio)
+
     wiz.response.status(200, role=role,
         morning_snack=morning_snack, lunch=lunch, afternoon_snack=afternoon_snack,
         meal_allergy=meal_allergy, allergy_map=ALLERGY_MAP,
-        allergy_warnings=allergy_warnings, allergy_dishes=allergy_dishes)
+        allergy_warnings=allergy_warnings, allergy_dishes=allergy_dishes,
+        meal_kcal=meal_kcal)
 
 def recommend_dinner():
     try:
@@ -930,6 +1129,10 @@ def _recommend_dinner_impl():
         child_age = children_info[0]['age']
 
     print(f"[recommend_dinner] 자녀: {child_name}, 나이: {child_age}세, 연령그룹: {'3~5세' if child_age >= 3 else '1~2세'}")
+    if children_info:
+        ci = children_info[0]
+        print(f"[recommend_dinner] 생년월일: {ci.get('birthdate', '없음')}, 개월수: {ci.get('age_months', 0)}개월")
+        print(f"[recommend_dinner] 알레르기: {ci.get('allergies', [])}")
     print(f"[recommend_dinner] 오늘 식단 {len(meals)}끼: {[m['meal_type'] for m in meals]}")
 
     # ── 전처리: 교사 대체식 선택 반영 + 연령별 분기 ──
@@ -966,10 +1169,58 @@ def _recommend_dinner_impl():
         mt = m['meal_type']
         meal_foods[mt] = meal_cleaned.get(mt, '')
 
-    # AI에게 전체 영양소 추정 요청
-    stage1_result = _ai_analyze_all_meals(
-        meal_foods, age_group, daily_total_kcal, daily_total_protein, child_age
-    )
+    # ── 캐시 확인 → 분석 → 캐시 저장 ──
+    today = datetime.datetime.now(KST).date()
+    cached_stage1 = None
+    try:
+        cache_row = MealNutritionCache.get_or_none(
+            (MealNutritionCache.server_id == server_id) &
+            (MealNutritionCache.meal_date == today) &
+            (MealNutritionCache.age_group == age_group)
+        )
+        if cache_row and cache_row.stage1_json:
+            cached_stage1 = json.loads(cache_row.stage1_json)
+            print(f"[recommend_dinner] 캐시 히트! analyzed_at={cache_row.analyzed_at}")
+    except Exception as e:
+        print(f"[recommend_dinner] 캐시 조회 실패: {e}")
+
+    if cached_stage1:
+        stage1_result = cached_stage1
+        print(f"[Stage1] 캐시에서 로드 (DB 분석 스킵)")
+    else:
+        # 식약처 API + AI 분석 (최초 1회만)
+        stage1_result = _ai_analyze_all_meals(
+            meal_foods, age_group, daily_total_kcal, daily_total_protein, child_age
+        )
+        # 캐시에 저장
+        try:
+            total = stage1_result.get('total', {})
+            existing = MealNutritionCache.get_or_none(
+                (MealNutritionCache.server_id == server_id) &
+                (MealNutritionCache.meal_date == today) &
+                (MealNutritionCache.age_group == age_group)
+            )
+            cache_data = {
+                'server_id': server_id,
+                'meal_date': today,
+                'age_group': age_group,
+                'total_calories': total.get('calories', 0),
+                'total_protein': total.get('protein', 0),
+                'total_fat': total.get('fat', 0),
+                'total_carbs': total.get('carbs', 0),
+                'total_calcium': total.get('calcium', 0),
+                'total_iron': total.get('iron', 0),
+                'stage1_json': json.dumps(stage1_result, ensure_ascii=False),
+            }
+            if existing:
+                MealNutritionCache.update(**cache_data).where(
+                    MealNutritionCache.id == existing.id
+                ).execute()
+            else:
+                MealNutritionCache.create(**cache_data)
+            print(f"[recommend_dinner] 캐시 저장 완료")
+        except Exception as e:
+            print(f"[recommend_dinner] 캐시 저장 실패: {e}")
 
     stage1_meals = stage1_result['meals']
     raw_total = stage1_result['total']
@@ -996,6 +1247,14 @@ def _recommend_dinner_impl():
     print(f"[Stage2] 선택된 목표(child_age={child_age}): {target}")
 
     consumed = dict(grand_total)
+
+    # 하루 전체 권장 섭취량 (저녁 추천용)
+    daily_target = _get_daily_target(child_age)
+    dinner_deficit = {}
+    for k in daily_target:
+        diff = round(daily_target[k] - consumed.get(k, 0), 1)
+        dinner_deficit[k] = max(diff, 0)
+
     deficit = {}
     surplus = {}
     status = {}
@@ -1026,10 +1285,15 @@ def _recommend_dinner_impl():
         'consumed': consumed,
         'deficit': deficit,
         'surplus': surplus,
-        'status': status
+        'status': status,
+        'daily_target': dict(daily_target),
+        'dinner_deficit': dinner_deficit,
     }
 
     # ── Stage 3: AI에게 저녁 메뉴 추천만 요청 ──
+    print(f"[Stage3] 하루 전체 목표: {daily_target}")
+    print(f"[Stage3] 저녁 부족분: {dinner_deficit}")
+
     allergy_text = ""
     if children_info:
         for ci in children_info:
@@ -1037,7 +1301,7 @@ def _recommend_dinner_impl():
                 allergy_text = f"알레르기: {', '.join(ci['allergies'])}\n"
 
     deficit_parts = []
-    for k, v in deficit.items():
+    for k, v in dinner_deficit.items():
         if v > 0:
             label, unit = NUTRIENT_LABEL_MAP.get(k, (k, ''))
             deficit_parts.append(f"{label} {v}{unit}")
@@ -1045,7 +1309,7 @@ def _recommend_dinner_impl():
 
     consumed_text = ", ".join([
         f"{NUTRIENT_LABEL_MAP.get(k, (k, ''))[0]} {consumed.get(k, 0)}{NUTRIENT_LABEL_MAP.get(k, (k, ''))[1]}"
-        for k in target
+        for k in daily_target
     ])
 
     # 아이 나이에 따른 음식 가이드 생성
@@ -1098,13 +1362,14 @@ def _recommend_dinner_impl():
 
     age_group = '3~5세' if child_age >= 3 else '1~2세'
     prompt = f"""{age_detail_text} 아이({age_group} 기준)의 오늘 어린이집 식사 영양 정보:
-실제 섭취량: {consumed_text}
-부족 영양소: {deficit_text}
+하루 전체 권장 섭취량: 칼로리 {daily_target['calories']}kcal, 단백질 {daily_target['protein']}g, 칼슘 {daily_target['calcium']}mg
+어린이집 실제 섭취량: {consumed_text}
+저녁에 보충 필요: {deficit_text}
 {age_group} 어린이 1인분 기준 중량: {serving_text}
 
 {allergy_text}
 부족한 영양소를 보충할 수 있는 저녁 메뉴를 추천해주세요.
-저녁 메뉴의 칼로리는 부족분({deficit.get('calories', 0)}kcal)에 맞춰주세요.
+저녁 메뉴의 칼로리는 부족분({dinner_deficit.get('calories', 0)}kcal)에 맞춰주세요.
 중요: 모든 영양소 수치는 반드시 {age_detail_text} 아이의 1인분 기준으로 계산해주세요."""
 
     stage3 = {'menus': [], 'tip': ''}

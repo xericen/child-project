@@ -107,7 +107,7 @@ input(type="file",
         span.day-title {{ selectedDate }}
         span.nav-arrow('(click)'="nextDay()") ▶
 
-      // 식단 목록
+      // 식단 목록 (타임라인)
       .day-theme-banner(*ngIf="getDayTheme() && getThemeInfo(getDayTheme())",
         '[style.border-left-color]'="getThemeInfo(getDayTheme()).color")
         span.day-theme-emoji {{ getThemeInfo(getDayTheme()).emoji }}
@@ -116,51 +116,53 @@ input(type="file",
       div(*ngIf="meals.length === 0")
         p.empty-msg 등록된 식단이 없습니다.
 
-      .meal-card(*ngFor="let meal of meals",
-        '[class.allergy-danger]'="role === 'parent' && meal.allergy_match")
-        // 보기 모드
-        div(*ngIf="editingMealId !== meal.id")
-          .meal-header
-            span.meal-type {{ getMealIcon(meal.meal_type) }} {{ meal.meal_type }}
-            span.meal-actions(*ngIf="role === 'teacher' || role === 'director'")
+      .timeline(*ngIf="meals.length > 0")
+        .tl-block(*ngFor="let meal of meals",
+          '[class.allergy-danger]'="role === 'parent' && meal.allergy_match")
+          .tl-dot
+          .tl-label
+            span {{ getMealIcon(meal.meal_type) }} {{ meal.meal_type }}
+            span.meal-actions(*ngIf="(role === 'teacher' || role === 'director') && editingMealId !== meal.id")
               span.meal-edit('(click)'="startEdit(meal)") ✎
-          .meal-content
-            div.meal-line(*ngFor="let item of parseMealLines(meal.content)")
-              // 대체식이 있는 줄 (교사/원장용 체크박스)
-              div(*ngIf="item.hasSubstitute && (role === 'teacher' || role === 'director')")
-                span.sub-row
-                  span.sub-original('[class.sub-strikethrough]'="isSubstituteSelected(meal, item.text)") {{ item.text }}
-                  span.sub-check('(click)'="toggleSubstitute(meal, item.text, item.substituteItem)",
-                    '[class.sub-checked]'="isSubstituteSelected(meal, item.text)")
-                    span(*ngIf="!isSubstituteSelected(meal, item.text)") ☐
-                    span(*ngIf="isSubstituteSelected(meal, item.text)") ☑
-                  span.sub-substitute('[class.sub-active]'="isSubstituteSelected(meal, item.text)") {{ item.substituteItem }}
-              // 대체식이 있는 줄 (부모용 — 체크박스 없이 기존 green 표시)
-              div(*ngIf="item.hasSubstitute && role === 'parent'")
-                span {{ item.text }}
-                span.green-text  {{ item.substituteItem }}
-              // 일반 줄
-              span(*ngIf="!item.hasSubstitute") {{ item.text }}
-          .meal-allergy-warning(*ngIf="role === 'parent' && meal.allergy_match")
-            | ⚠️ 알레르기 주의: {{ meal.matched_allergens?.join(', ') }}
-          img.meal-photo(*ngIf="meal.photo_path",
-            '[src]'="meal.photo_path")
+          .tl-card
+            //- 보기 모드
+            div(*ngIf="editingMealId !== meal.id")
+              div.meal-line(*ngFor="let item of parseMealLines(meal.content)")
+                //- 대체식 (교사/원장용 체크박스)
+                div(*ngIf="item.hasSubstitute && (role === 'teacher' || role === 'director')")
+                  span.sub-row
+                    span.sub-original('[class.sub-strikethrough]'="isSubstituteSelected(meal, item.text)") {{ item.text }}
+                    span.sub-check('(click)'="toggleSubstitute(meal, item.text, item.substituteItem)",
+                      '[class.sub-checked]'="isSubstituteSelected(meal, item.text)")
+                      span(*ngIf="!isSubstituteSelected(meal, item.text)") ☐
+                      span(*ngIf="isSubstituteSelected(meal, item.text)") ☑
+                    span.sub-substitute('[class.sub-active]'="isSubstituteSelected(meal, item.text)") {{ item.substituteItem }}
+                //- 대체식 (부모용)
+                div(*ngIf="item.hasSubstitute && role === 'parent'")
+                  span {{ item.text }}
+                  span.green-text  {{ item.substituteItem }}
+                //- 일반 줄
+                span(*ngIf="!item.hasSubstitute") {{ item.text }}
+              .meal-allergy-warning(*ngIf="role === 'parent' && meal.allergy_match")
+                | ⚠️ 알레르기 주의: {{ meal.matched_allergens?.join(', ') }}
+              img.meal-photo(*ngIf="meal.photo_path",
+                '[src]'="meal.photo_path")
 
-        // 수정 모드
-        div.edit-form(*ngIf="editingMealId === meal.id")
-          .form-group
-            label 식단 종류
-            select([(ngModel)]="editMealType")
-              option(value="오전간식") 🍪 오전간식
-              option(value="점심") 🍚 점심
-              option(value="오후간식") 🍪 오후간식
-          .form-group
-            label 식단 내용
-            textarea([(ngModel)]="editMealContent",
-              rows="3")
-          .edit-actions
-            button.btn-edit-save('(click)'="updateMeal()") 저장
-            button.btn-edit-cancel('(click)'="cancelEdit()") 취소
+            //- 수정 모드
+            div.edit-form(*ngIf="editingMealId === meal.id")
+              .form-group
+                label 식단 종류
+                select([(ngModel)]="editMealType")
+                  option(value="오전간식") 🍪 오전간식
+                  option(value="점심") 🍚 점심
+                  option(value="오후간식") 🍪 오후간식
+              .form-group
+                label 식단 내용
+                textarea([(ngModel)]="editMealContent",
+                  rows="3")
+              .edit-actions
+                button.btn-edit-save('(click)'="updateMeal()") 저장
+                button.btn-edit-cancel('(click)'="cancelEdit()") 취소
 
     // 영양분석 모드
     div(*ngIf="mode === 'nutrition'")

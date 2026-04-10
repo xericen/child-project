@@ -1,10 +1,29 @@
 # pyright: reportUndefinedVariable=false, reportMissingImports=false
+import os
 import datetime
+from PIL import Image, ImageOps
+import io
 
 Users = wiz.model("db/login_db/users")
 ServerMembers = wiz.model("db/login_db/server_members")
 Children = wiz.model("db/childcheck/children")
 ChildAllergies = wiz.model("db/childcheck/child_allergies")
+
+MAX_IMAGE_WIDTH = 800
+JPEG_QUALITY = 85
+
+def _compress_image(file_data, max_width=MAX_IMAGE_WIDTH, quality=JPEG_QUALITY):
+    img = Image.open(io.BytesIO(file_data))
+    img = ImageOps.exif_transpose(img)
+    if img.mode in ('RGBA', 'P'):
+        img = img.convert('RGB')
+    w, h = img.size
+    if w > max_width:
+        ratio = max_width / w
+        img = img.resize((max_width, int(h * ratio)), Image.LANCZOS)
+    buf = io.BytesIO()
+    img.save(buf, format='JPEG', quality=quality, optimize=True)
+    return buf.getvalue()
 
 def get_profile_data():
     role = wiz.session.get("role")
@@ -141,7 +160,8 @@ def get_profile_data():
                     is_severe=is_severe,
                     needs_substitute=needs_substitute,
                     has_childcheck=True,
-                    is_birthday=is_birthday
+                    is_birthday=is_birthday,
+                    profile_photo=child.profile_photo or ""
                 ))
         else:
             child_name = parent.child_name or ""
@@ -168,7 +188,8 @@ def get_profile_data():
                     is_severe=False,
                     needs_substitute=False,
                     has_childcheck=False,
-                    is_birthday=is_birthday
+                    is_birthday=is_birthday,
+                    profile_photo=""
                 ))
 
     # 원장: 반별 그룹핑 데이터 생성
@@ -373,3 +394,66 @@ def delete_class():
         deleted_children=deleted_children,
         deleted_parents=deleted_parents
     )
+
+def serve_profile_photo():
+    filename = wiz.request.query("filename", True)
+    if ".." in filename or "/" in filename:
+        wiz.response.abort(400)
+
+    fs = wiz.project.fs("data", "profile_photos")
+    filepath = fs.abspath(filename)
+    if not os.path.isfile(filepath):
+        wiz.response.abort(404)
+
+    flask = wiz.response._flask
+    resp = flask.send_file(filepath, mimetype='image/jpeg')
+    resp.headers['Cache-Control'] = 'public, max-age=86400'
+    wiz.response.response(resp)
+
+def upload_child_photo():
+    role = wiz.session.get("role")
+    if role not in ['teacher', 'director']:
+        wiz.response.status(403, message="권한이 없습니다.")
+
+    child_id = wiz.request.query("child_id", True)
+    child_id = int(child_id)
+
+    file = wiz.request.file("photo")
+    if not file or not file.filename:
+        wiz.response.status(400, message="사진을 선택해주세요.")
+
+    try:
+        child = Children.select().where(Children.id == child_id).first()
+    except Exception as e:
+        wiz.response.status(400, message=str(e))
+
+    if not child:
+        wiz.response.status(400, message="해당 아이를 찾을 수 없습니다.")
+
+    fs = wiz.project.fs("data", "profile_photos")
+    safe_name = f"child_{child_id}_{int(datetime.datetime.now().timestamp())}.jpg"
+    save_path = fs.abspath(safe_name)
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+
+    try:
+        compressed = _compress_image(file.read())
+        with open(save_path, 'wb') as wf:
+            wf.write(compressed)
+    except Exception as e:
+        wiz.response.status(500, message=str(e))
+
+    old_photo = child.profile_photo
+    if old_photo:
+        try:
+            old_path = fs.abspath(old_photo)
+            if os.path.isfile(old_path):
+                os.remove(old_path)
+        except Exception:
+            pass
+
+    try:
+        Children.update(profile_photo=safe_name).where(Children.id == child_id).execute()
+    except Exception as e:
+        wiz.response.status(500, message=str(e))
+
+    wiz.response.status(200, profile_photo=safe_name)

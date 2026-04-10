@@ -481,8 +481,18 @@ class NutritionAPI:
                     return entry['data']
 
         # 2단계: DB 매핑 캐시 확인 (영구 저장)
+        #   ai_estimate 캐시는 신뢰도가 낮으므로, 로컬 DB에 있으면 재검색하여 교체
         db_result = self._db_mapping_get(cleaned)
         if db_result is not None:
+            if db_result.get('is_estimated') or db_result.get('source') == 'ai_estimate':
+                # AI 추정 결과 → 로컬 DB에서 더 정확한 결과가 있는지 재검색
+                db_food_result = self._db_search(cleaned)
+                if db_food_result is not None:
+                    food_name_matched = db_food_result.get('name', '')
+                    self._db_mapping_save(cleaned, db_food_result, food_name=food_name_matched, source='local_db')
+                    with self._lock:
+                        self._cache[cleaned] = {'data': db_food_result, 'time': time.time()}
+                    return db_food_result
             with self._lock:
                 self._cache[cleaned] = {'data': db_result, 'time': time.time()}
             return db_result
