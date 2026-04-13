@@ -10,6 +10,8 @@ export class Component implements OnInit {
     allergyWarnings: any = {};
     allergyDishes: any = {};
     mealKcal: any = {};
+    dbKcal: number = 0;
+    dbProtein: number = 0;
     pageLoading: boolean = true;
     currentPage: number = 0;
     mainIngredients: any[] = [];
@@ -38,6 +40,8 @@ export class Component implements OnInit {
             this.allergyWarnings = res.data.allergy_warnings || {};
             this.allergyDishes = res.data.allergy_dishes || {};
             this.mealKcal = res.data.meal_kcal || {};
+            this.dbKcal = res.data.db_kcal || 0;
+            this.dbProtein = res.data.db_protein || 0;
         }
     }
 
@@ -56,6 +60,15 @@ export class Component implements OnInit {
             const res = await wiz.call("recommend_dinner");
             if (res.code === 200 && res.data.analysis) {
                 this.analysis = res.data.analysis;
+                // DB 칼로리/단백질로 분석 결과 강제 동기화
+                if (this.dbKcal > 0) {
+                    if (this.analysis.stage1?.total) this.analysis.stage1.total.calories = this.dbKcal;
+                    if (this.analysis.stage2?.consumed) this.analysis.stage2.consumed.calories = this.dbKcal;
+                }
+                if (this.dbProtein > 0) {
+                    if (this.analysis.stage1?.total) this.analysis.stage1.total.protein = this.dbProtein;
+                    if (this.analysis.stage2?.consumed) this.analysis.stage2.consumed.protein = this.dbProtein;
+                }
                 this.currentPage = 0;
                 this.extractIngredients();
                 this.logAnalysis();

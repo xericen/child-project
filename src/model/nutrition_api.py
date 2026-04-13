@@ -147,6 +147,7 @@ class NutritionAPI:
     MEAL_RATIOS = MEAL_RATIOS
     DISPLAY_NAMES = DISPLAY_NAMES
     SERVING_WEIGHTS = SERVING_WEIGHTS
+    BASIC_INGREDIENTS = BASIC_INGREDIENTS
 
     def __init__(self):
         self._cache = {}
@@ -465,6 +466,42 @@ class NutritionAPI:
         except Exception:
             pass
         return None
+
+    def search_local(self, menu_name):
+        """로컬 데이터만으로 영양성분 검색 (API/AI 호출 없음, 결정적 결과 보장).
+        검색 순서: 인메모리 캐시 → DB 매핑 캐시(non-AI) → BASIC_INGREDIENTS → nutrition_foods DB
+        Returns: (nutrient_dict, source) or (None, None)"""
+        cleaned = self._clean_menu_name(menu_name)
+        if not cleaned:
+            return None, None
+
+        # 1. 인메모리 캐시
+        with self._lock:
+            if cleaned in self._cache:
+                entry = self._cache[cleaned]
+                if time.time() - entry['time'] < self._cache_ttl:
+                    src = entry['data'].get('source', 'cache')
+                    if src not in ('ai_estimate', 'ai'):
+                        return entry['data'], src
+
+        # 2. DB 매핑 캐시 (AI 결과 제외)
+        db_result = self._db_mapping_get(cleaned)
+        if db_result is not None:
+            src = db_result.get('source', 'db_cache')
+            if src not in ('ai_estimate', 'ai'):
+                return db_result, src
+
+        # 3. BASIC_INGREDIENTS
+        if cleaned in BASIC_INGREDIENTS:
+            result = dict(BASIC_INGREDIENTS[cleaned])
+            return result, 'basic'
+
+        # 4. nutrition_foods DB (exact + LIKE)
+        db_food_result = self._db_search(cleaned)
+        if db_food_result is not None:
+            return db_food_result, 'local_db'
+
+        return None, None
 
     def search(self, menu_name):
         """메뉴명으로 영양성분 검색 (캐시 포함)

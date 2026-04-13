@@ -357,6 +357,41 @@
   }
 }
 
+// ====== 식단표 등록 칼로리/단백질 바 ======
+.db-nutrition-bar {
+  display: flex;
+  justify-content: center;
+  gap: 32px;
+  margin-top: 20px;
+  padding: 14px 20px;
+  background: #f4f5fb;
+  border-radius: 14px;
+
+  .db-nutrition-item {
+    display: flex;
+    align-items: baseline;
+    gap: 5px;
+  }
+
+  .db-label {
+    font-size: 12px;
+    color: #999;
+    font-weight: 500;
+  }
+
+  .db-value {
+    font-size: 22px;
+    font-weight: 800;
+    color: #3a4de4;
+  }
+
+  .db-unit {
+    font-size: 12px;
+    color: #999;
+    font-weight: 500;
+  }
+}
+
 // ====== 페이지 네비게이션 ======
 .page-nav {
   display: flex;

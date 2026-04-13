@@ -1,0 +1,165 @@
+{
+    "source": "식품의약품안전처 / 어린이급식관리지원센터 (2013.05)",
+    "title": "영유아 단체급식 가이드라인 1인 1회 적정 배식량",
+
+    "food_group_standards": {
+        "곡류": {
+            "calories": 190, "protein": 2.5, "fat": 0.3, "carbs": 44.0,
+            "calcium": 2.4, "iron": 0.56,
+            "serving": "밥 130g (2/3공기)",
+            "note": "쌀밥 기준 190kcal"
+        },
+        "고기류": {
+            "calories": 50, "protein": 5.0, "fat": 2.0, "carbs": 0.0,
+            "calcium": 11.1, "iron": 1.17,
+            "serving": "육류 30g (1/2접시)",
+            "note": "고기·생선·계란·콩류 평균 50kcal, 단백질 5g"
+        },
+        "채소류": {
+            "calories": 7, "protein": 0.5, "fat": 0.0, "carbs": 1.5,
+            "calcium": 10.4, "iron": 0.33,
+            "serving": "콩나물 35g (1/2접시)",
+            "note": "나물/무침류 평균 7kcal"
+        },
+        "국류": {
+            "calories": 25, "protein": 1.5, "fat": 0.5, "carbs": 2.0,
+            "calcium": 14.0, "iron": 0.28,
+            "serving": "1~2세 100ml, 3~5세 140ml",
+            "note": "채소+고기 혼합, 대표식단 평균"
+        },
+        "김치류": {
+            "calories": 3, "protein": 0.3, "fat": 0.0, "carbs": 0.5,
+            "calcium": 6.6, "iron": 0.11,
+            "serving": "1~2세 14g, 3~5세 20g",
+            "note": "배추김치/깍두기 평균"
+        },
+        "과일류": {
+            "calories": 25, "protein": 0.3, "fat": 0.0, "carbs": 6.0,
+            "calcium": 2.0, "iron": 0.10,
+            "serving": "사과 50g (1/4개)",
+            "note": "과일류 평균 25kcal"
+        },
+        "우유": {
+            "calories": 120, "protein": 6.4, "fat": 6.0, "carbs": 9.2,
+            "calcium": 210.0, "iron": 0.20,
+            "serving": "우유 200ml (1컵)",
+            "note": "1~5세 동일, 간식으로 1일 2회(200ml) 제공"
+        },
+        "요구르트": {
+            "calories": 77, "protein": 2.6, "fat": 2.0, "carbs": 12.0,
+            "calcium": 124.5, "iron": 0.37,
+            "serving": "호상요구르트 100ml",
+            "note": "우유 1컵 대체 가능"
+        }
+    },
+
+    "meal_serving_counts": {
+        "1~2세": {
+            "점심": {
+                "곡류": 0.7, "고기류": 1.5, "채소류": 1.5, "국류": 1.0, "김치류": 1.0,
+                "과일류": 0.0, "우유": 0.0, "요구르트": 0.0
+            },
+            "간식": {
+                "곡류": 0.3, "고기류": 0.0, "채소류": 0.0, "국류": 0.0, "김치류": 0.0,
+                "과일류": 1.0, "우유": 1.0, "요구르트": 1.0
+            }
+        },
+        "3~5세": {
+            "점심": {
+                "곡류": 1.0, "고기류": 2.0, "채소류": 2.5, "국류": 1.0, "김치류": 1.0,
+                "과일류": 0.0, "우유": 0.0, "요구르트": 0.0
+            },
+            "간식": {
+                "곡류": 0.5, "고기류": 0.0, "채소류": 0.0, "국류": 0.0, "김치류": 0.0,
+                "과일류": 1.5, "우유": 1.0, "요구르트": 1.0
+            }
+        }
+    },
+
+    "daily_serving_counts": {
+        "1~2세": {
+            "곡류": 2.4, "고기류": 4.0, "채소류": 7.0,
+            "과일류": 1.5, "우유류": 4.0, "유지류": 2.5
+        },
+        "3~5세": {
+            "곡류": 3.5, "고기류": 6.0, "채소류": 10.0,
+            "과일류": 2.0, "우유류": 4.0, "유지류": 4.0
+        }
+    },
+
+    "daily_energy": {
+        "1~2세": 1000,
+        "3~5세": 1400
+    },
+
+    "daycare_targets": {
+        "1~2세": {
+            "calories": 420, "protein": 15, "calcium": 250, "iron": 3.3,
+            "note": "하루 1000kcal의 약 42% (오전간식 8% + 점심 28% + 오후간식 10% ≈ 46%)"
+        },
+        "3~5세": {
+            "calories": 640, "protein": 25, "calcium": 275, "iron": 4.5,
+            "note": "하루 1400kcal의 약 46%"
+        }
+    },
+
+    "representative_meals": {
+        "1~2세_새송이메추리알장조림": {
+            "total": {"calories": 540.8, "protein": 21.9, "calcium": 299.4, "iron": 3.21},
+            "items": {
+                "흑미밥": {"calories": 140.8, "protein": 2.3, "calcium": 2.4, "iron": 0.56},
+                "시금치두부된장국": {"calories": 20.6, "protein": 2.0, "calcium": 24.9, "iron": 0.57},
+                "새송이메추리알장조림": {"calories": 70.6, "protein": 4.7, "calcium": 21.5, "iron": 0.75},
+                "콩나물무침": {"calories": 13.0, "protein": 1.3, "calcium": 12.4, "iron": 0.38},
+                "오이소박이": {"calories": 3.6, "protein": 0.3, "calcium": 8.4, "iron": 0.17},
+                "우유": {"calories": 120.0, "protein": 6.4, "calcium": 210.0, "iron": 0.20},
+                "바나나": {"calories": 30.0, "protein": 0.4, "calcium": 1.5, "iron": 0.26},
+                "롤빵": {"calories": 142.2, "protein": 4.5, "calcium": 18.3, "iron": 0.32}
+            }
+        },
+        "1~2세_닭살채소볶음": {
+            "total": {"calories": 469.6, "protein": 21.5, "calcium": 280.6, "iron": 2.39},
+            "items": {
+                "현미밥": {"calories": 140.0, "protein": 3.0, "calcium": 2.4, "iron": 0.28},
+                "콩나물국": {"calories": 9.8, "protein": 0.9, "calcium": 14.4, "iron": 0.28},
+                "닭살채소볶음": {"calories": 76.1, "protein": 7.6, "calcium": 8.4, "iron": 0.71},
+                "연근조림": {"calories": 17.4, "protein": 0.5, "calcium": 4.2, "iron": 0.19},
+                "깍두기": {"calories": 4.6, "protein": 0.2, "calcium": 5.2, "iron": 0.06},
+                "우유": {"calories": 120.0, "protein": 6.4, "calcium": 210.0, "iron": 0.20},
+                "사과": {"calories": 21.4, "protein": 0.1, "calcium": 1.1, "iron": 0.10},
+                "주먹밥": {"calories": 80.3, "protein": 2.8, "calcium": 34.9, "iron": 0.57}
+            }
+        },
+        "1~2세_쇠불고기": {
+            "total": {"calories": 446.4, "protein": 16.7, "calcium": 205.0, "iron": 3.49},
+            "items": {
+                "쌀밥": {"calories": 140.0, "protein": 2.3, "calcium": 2.4, "iron": 0.56},
+                "북어계란국": {"calories": 39.2, "protein": 2.9, "calcium": 14.0, "iron": 0.28},
+                "쇠불고기": {"calories": 54.3, "protein": 4.8, "calcium": 11.1, "iron": 1.17},
+                "애호박나물": {"calories": 31.5, "protein": 0.9, "calcium": 10.4, "iron": 0.33},
+                "배추김치": {"calories": 2.5, "protein": 0.3, "calcium": 6.6, "iron": 0.11},
+                "호상요구르트": {"calories": 77.2, "protein": 2.6, "calcium": 124.5, "iron": 0.37},
+                "사과": {"calories": 21.4, "protein": 0.1, "calcium": 1.1, "iron": 0.10},
+                "주먹밥": {"calories": 80.3, "protein": 2.8, "calcium": 34.9, "iron": 0.57}
+            }
+        }
+    },
+
+    "serving_weights": {
+        "1~2세": {
+            "밥류": "90g (1주걱)",
+            "국류": "100ml (1.5국자)",
+            "주찬류": "30g (가득 1숟가락)",
+            "부찬류": "30g (1.5숟가락)",
+            "김치류": "14g (0.5숟가락)",
+            "note": "만 3~5세 표준(130g)의 약 2/3"
+        },
+        "3~5세": {
+            "밥류": "130g (1.5주걱)",
+            "국류": "140ml (2국자)",
+            "주찬류": "45g (가득 1.5숟가락)",
+            "부찬류": "40g (2숟가락)",
+            "김치류": "20g (1숟가락)"
+        }
+    }
+}

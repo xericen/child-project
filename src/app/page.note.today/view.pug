@@ -53,6 +53,17 @@
             span.empty-icon 🍽️
             p 오늘 등록된 식단이 없습니다.
 
+        //- 식단표 등록 칼로리/단백질 (HWP 값)
+        .db-nutrition-bar(*ngIf="dbKcal > 0")
+          .db-nutrition-item
+            span.db-label 칼로리
+            span.db-value {{ dbKcal }}
+            span.db-unit kcal
+          .db-nutrition-item
+            span.db-label 단백질
+            span.db-value {{ dbProtein }}
+            span.db-unit g
+
       //- 분석 로딩
       .dinner-loading-wrap(*ngIf="dinnerLoading")
         .spinner
@@ -84,11 +95,11 @@
             .summary-row
               .summary-item
                 .lbl 칼로리
-                .val {{ analysis.stage1.total.calories || 0 }}
+                .val {{ dbKcal || analysis.stage1.total.calories || 0 }}
                   span.unit kcal
               .summary-item
                 .lbl 단백질
-                .val {{ analysis.stage1.total.protein || 0 }}
+                .val {{ dbProtein || analysis.stage1.total.protein || 0 }}
                   span.unit g
               .summary-item
                 .lbl 칼슘
@@ -101,7 +112,7 @@
             .progress-wrap
               .progress-label-row
                 span 칼로리 달성률
-                span {{ analysis.stage1.total.calories || 0 }} / {{ analysis.stage2?.recommended?.calories || '—' }} kcal
+                span {{ dbKcal || analysis.stage1.total.calories || 0 }} / {{ analysis.stage2?.recommended?.calories || '—' }} kcal
               .progress-bar
                 .progress-fill('[style.width.%]'="getNutrientFillPercent('calories')")
 

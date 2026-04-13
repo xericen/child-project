@@ -191,3 +191,14 @@
 | 2026-04-08 | 004 | 식단표 사진 업로드 디자인 변경 (하단 카드형) | [상세](devlog/2026-04-08/004-photo-upload-card-design.md) |
 | 2026-04-08 | 005 | 어린이집명/반 표시 카드형 디자인 개선 | [상세](devlog/2026-04-08/005-school-name-design.md) |
 | 2026-04-08 | 006 | 가상 포트 실행 테스트 (전체 페이지 200 확인) | [상세](devlog/2026-04-08/006-virtual-port-test.md) |
+| 2026-04-09 | 001 | 알레르기 시스템 전면 개편 (19종 체크 + 재료 AI 캐시 + 프로필 검색) | [상세](devlog/2026-04-09/001-allergy-system-overhaul.md) |
+| 2026-04-09 | 002 | 프로필 탭 전환 / 회원정보 탭 분리 / 타이틀 통일 / 프로필 사진 기능 | [상세](devlog/2026-04-09/002-profile-tabs-and-ui-improvements.md) |
+| 2026-04-10 | 001 | 오늘의 식단 페이지 UI 목업 기준 전면 리디자인 | [상세](devlog/2026-04-10/001-today-menu-ui-redesign.md) |
+| 2026-04-10 | 002 | 교사/원장 프로필 카드 디자인 변경 (리스트형) | [상세](devlog/2026-04-10/002-profile-card-redesign.md) |
+| 2026-04-10 | 003 | 저녁 추천 성능 개선 + 알레르기 감지 + UI 개선 | [상세](devlog/2026-04-10/003-dinner-perf-allergy-ui.md) |
+| 2026-04-10 | 004 | 영양분석 칼로리/단백질 DB값 직접 사용 + Ca/Fe API 비율보정 | [상세](devlog/2026-04-10/004-nutrition-db-direct.md) |
+| 2026-04-10 | 005 | 기타 알레르기 월간 Gemini 일괄 분석 + 캐시 | [상세](devlog/2026-04-10/005-monthly-allergy-cache.md) |
+| 2026-04-13 | 001 | 영양소 계산 - 연령별 제공 횟수 기반 칼로리 + 콘솔 로그 개선 | [상세](devlog/2026-04-13/001-nutrition-serving-counts.md) |
+| 2026-04-13 | 002 | 가이드라인 데이터 JSON 외부화 | [상세](devlog/2026-04-13/002-nutrition-guideline-json.md) |
+| 2026-04-13 | 003 | 저녁 추천 결과 검증 로직 추가 | [상세](devlog/2026-04-13/003-dinner-verify.md) |
+| 2026-04-13 | 004 | 식품 DB + 식품군 하이브리드 영양 분석 | [상세](devlog/2026-04-13/004-hybrid-nutrition.md) |
