@@ -46,6 +46,11 @@ export class Component implements OnInit {
 
     // HWP 파싱 로딩
     hwpLoading: boolean = false;
+    hwpProgress: number = 0;
+    hwpProgressLabel: string = '';
+    private _hwpProgressTimer: any = null;
+    private _hwpTarget: number = 0;
+    private _hwpStartTime: number = 0;
 
     // 월간 HWP 파일 상태
     monthHwpFile: any = null;
@@ -90,6 +95,19 @@ export class Component implements OnInit {
 
     // 날짜 이동 요청 취소용
     private _dailyRequestId: number = 0;
+    dailyLoading: boolean = false;
+    dailyCache: any = {};
+    private dailyFetchPromises: any = {};
+
+    // 영양 정보 (연령별)
+    nutritionByAge: any = {};
+    nutritionAgeKeys: string[] = [];
+    selectedNutritionAge: string = '';
+    nutritionAllergens: string[] = [];
+
+    public get nutrition(): any {
+        return this.nutritionByAge[this.selectedNutritionAge] || null;
+    }
 
     constructor(public service: Service, public router: Router) {}
 
@@ -104,7 +122,10 @@ export class Component implements OnInit {
         this.selectedMonth = this.selectedDate.substring(0, 7);
         await this.loadMealFiles();
         await this.loadMonthly();
+        await this.prefetchCurrentMonthDailyData(false, undefined, false);
         await this.service.render();
+        const [y, m] = this.selectedMonth.split('-').map(Number);
+        return `${y}년 ${m}월`;
     }
 
     public get monthLabel(): string {
@@ -167,8 +188,8 @@ export class Component implements OnInit {
             this.showForm = false;
             this.editingMealId = null;
             await this.loadMonthly();
+            await this.prefetchCurrentMonthDailyData(false, undefined, true);
             await this.service.render();
-            return;
         }
         this.router.navigate(['/note']);
     }
@@ -266,31 +287,183 @@ export class Component implements OnInit {
         }
     }
 
+    private getAvailableMealDates(): string[] {
+        return Object.keys(this.monthlyMeals || {})
+            .filter((date) => Array.isArray(this.monthlyMeals[date]) && this.monthlyMeals[date].length > 0)
+            .sort();
+    }
+
+    private getFirstMealDateInSelectedMonth(): string {
+        const dates = this.getAvailableMealDates();
+        return dates.length > 0 ? dates[0] : `${this.selectedMonth}-01`;
+    }
+
+    private getAdjacentMealDate(direction: 'prev' | 'next'): string | null {
+        const dates = this.getAvailableMealDates();
+        if (dates.length === 0) return null;
+        if (!this.selectedDate || !dates.includes(this.selectedDate)) {
+            return direction === 'prev' ? dates[dates.length - 1] : dates[0];
+        }
+        const currentIndex = dates.indexOf(this.selectedDate);
+        if (direction === 'prev') {
+            return currentIndex > 0 ? dates[currentIndex - 1] : null;
+        }
+        return currentIndex < dates.length - 1 ? dates[currentIndex + 1] : null;
+    }
+
+    private resetDailyState() {
+        this.meals = [];
+        this.nutritionByAge = {};
+        this.nutritionAgeKeys = [];
+        this.selectedNutritionAge = '';
+        this.nutritionAllergens = [];
+    }
+
+    private applyDailyData(data: any) {
+        this.meals = data?.meals || [];
+        this.nutritionByAge = data?.nutrition_by_age || {};
+        this.nutritionAgeKeys = Object.keys(this.nutritionByAge);
+        if (!this.nutritionAgeKeys.includes(this.selectedNutritionAge)) {
+            this.selectedNutritionAge = this.nutritionAgeKeys[0] || '';
+        }
+        this.nutritionAllergens = data?.allergens || [];
+    }
+
+    private seedDailyFromMonthly(date: string) {
+        const sourceMeals = Array.isArray(this.monthlyMeals?.[date]) ? this.monthlyMeals[date] : [];
+        if (sourceMeals.length === 0) {
+            this.resetDailyState();
+            return;
+        }
+        this.meals = sourceMeals.map((meal: any) => ({
+            id: meal.id,
+            meal_type: meal.meal_type,
+            content: meal.content || '',
+            photo_path: meal.photo_path || '',
+            theme: meal.theme || '',
+            allergy_match: false,
+            matched_allergens: [],
+            matched_dishes: [],
+            substitute_pairs: []
+        }));
+        this.nutritionByAge = {};
+        this.nutritionAgeKeys = [];
+        this.selectedNutritionAge = '';
+        this.nutritionAllergens = [];
+    }
+
+    private async fetchDailyData(date: string, force: boolean = false, skipNutrition: boolean = false): Promise<any> {
+        if (!force && this.dailyCache[date]) {
+            return this.dailyCache[date];
+        }
+        if (!force && this.dailyFetchPromises[date]) {
+            return await this.dailyFetchPromises[date];
+        }
+
+        const params: any = { date };
+        if (skipNutrition) params.skip_nutrition = "1";
+
+        this.dailyFetchPromises[date] = (async () => {
+            const res = await wiz.call("get_daily", params);
+            if (res.code === 200) {
+                this.dailyCache[date] = res.data || {};
+                return this.dailyCache[date];
+            }
+            return null;
+        })();
+
+        try {
+            return await this.dailyFetchPromises[date];
+        } finally {
+            delete this.dailyFetchPromises[date];
+        }
+    }
+
+    private async prefetchDailyDates(dates: string[], concurrency: number = 4, onProgress?: (done: number, total: number) => void, skipNutrition: boolean = false) {
+        const queue = dates.filter((date) => !!date && !this.dailyCache[date]);
+        if (queue.length === 0) {
+            if (onProgress) onProgress(1, 1);
+            return;
+        }
+
+        let index = 0;
+        let completed = 0;
+        const total = queue.length;
+        const workers = Array.from({ length: Math.min(concurrency, queue.length) }, async () => {
+            while (index < queue.length) {
+                const currentIndex = index++;
+                const date = queue[currentIndex];
+                try {
+                    await this.fetchDailyData(date, false, skipNutrition);
+                } catch (e) {
+                    console.error('prefetchDailyDates error:', date, e);
+                }
+                completed++;
+                if (onProgress) onProgress(completed, total);
+            }
+        });
+        await Promise.all(workers);
+    }
+
+    private async prefetchCurrentMonthDailyData(waitForAll: boolean = false, onProgress?: (done: number, total: number) => void, skipNutrition: boolean = false) {
+        const dates = this.getAvailableMealDates();
+        if (dates.length === 0) return;
+        if (waitForAll) {
+            await this.prefetchDailyDates(dates, 4, onProgress, skipNutrition);
+            return;
+        }
+        void this.prefetchDailyDates(dates, 4, undefined, skipNutrition);
+    }
+
     public async onCalendarDayClick(item: any) {
         if (!item.day) return;
         this.selectedDate = item.date;
         this.mode = 'daily';
         this.showForm = false;
         this.editingMealId = null;
+        if (this.dailyCache[this.selectedDate]) {
+            this.applyDailyData(this.dailyCache[this.selectedDate]);
+        } else {
+            this.seedDailyFromMonthly(this.selectedDate);
+        }
+        await this.service.render();
         await this.loadDaily();
         await this.service.render();
     }
 
     private async loadDaily() {
         const reqId = ++this._dailyRequestId;
-        const res = await wiz.call("get_daily", { date: this.selectedDate });
-        if (reqId !== this._dailyRequestId) return; // 새 요청이 들어왔으면 무시
-        if (res.code === 200) {
-            this.meals = res.data.meals || [];
+        this.dailyLoading = true;
+        const cached = this.dailyCache[this.selectedDate];
+        if (cached) {
+            this.applyDailyData(cached);
+            // 영양 데이터가 없으면 (skip_nutrition으로 프리패치된 경우) 풀 데이터 재요청
+            const hasNutrition = cached.nutrition_by_age && Object.keys(cached.nutrition_by_age).length > 0;
+            if (!hasNutrition) {
+                const freshData = await this.fetchDailyData(this.selectedDate, true);
+                if (reqId !== this._dailyRequestId) return;
+                if (freshData) this.applyDailyData(freshData);
+            }
+            this.dailyLoading = false;
+            return;
         }
+        const data = await this.fetchDailyData(this.selectedDate);
+        if (reqId !== this._dailyRequestId) return; // 새 요청이 들어왔으면 무시
+        if (data) {
+            this.applyDailyData(data);
+        }
+        this.dailyLoading = false;
     }
 
     public async prevMonth() {
         const [y, m] = this.selectedMonth.split('-').map(Number);
         const d = new Date(y, m - 2, 1);
         this.selectedMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        this.dailyCache = {};
+        this.dailyFetchPromises = {};
         await this.loadMonthly();
         await this.loadMealFiles();
+        await this.prefetchCurrentMonthDailyData(false, undefined, true);
         await this.service.render();
     }
 
@@ -298,28 +471,39 @@ export class Component implements OnInit {
         const [y, m] = this.selectedMonth.split('-').map(Number);
         const d = new Date(y, m, 1);
         this.selectedMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        this.dailyCache = {};
+        this.dailyFetchPromises = {};
         await this.loadMonthly();
         await this.loadMealFiles();
+        await this.prefetchCurrentMonthDailyData(false, undefined, true);
         await this.service.render();
     }
 
     public async prevDay() {
-        const d = new Date(this.selectedDate);
-        d.setDate(d.getDate() - 1);
-        this.selectedDate = this.formatDate(d);
+        const targetDate = this.getAdjacentMealDate('prev');
+        if (!targetDate) return;
+        this.selectedDate = targetDate;
         this.editingMealId = null;
-        this.meals = [];
+        if (this.dailyCache[this.selectedDate]) {
+            this.applyDailyData(this.dailyCache[this.selectedDate]);
+        } else {
+            this.seedDailyFromMonthly(this.selectedDate);
+        }
         await this.service.render();
         await this.loadDaily();
         await this.service.render();
     }
 
     public async nextDay() {
-        const d = new Date(this.selectedDate);
-        d.setDate(d.getDate() + 1);
-        this.selectedDate = this.formatDate(d);
+        const targetDate = this.getAdjacentMealDate('next');
+        if (!targetDate) return;
+        this.selectedDate = targetDate;
         this.editingMealId = null;
-        this.meals = [];
+        if (this.dailyCache[this.selectedDate]) {
+            this.applyDailyData(this.dailyCache[this.selectedDate]);
+        } else {
+            this.seedDailyFromMonthly(this.selectedDate);
+        }
         await this.service.render();
         await this.loadDaily();
         await this.service.render();
@@ -331,6 +515,11 @@ export class Component implements OnInit {
         this.newMealContent = '';
         this.selectedFile = null;
         this.editingMealId = null;
+        await this.service.render();
+    }
+
+    public async selectNutritionAge(age: string) {
+        this.selectedNutritionAge = age;
         await this.service.render();
     }
 
@@ -457,6 +646,8 @@ export class Component implements OnInit {
             this.showForm = false;
             this.newMealContent = '';
             this.selectedFile = null;
+            delete this.dailyCache[this.selectedDate];
+            this.dailyFetchPromises = {};
             await this.loadDaily();
         }
         await this.service.render();
@@ -465,6 +656,8 @@ export class Component implements OnInit {
     public async deleteMeal(id: number) {
         const res = await wiz.call("delete_meal", { id: id });
         if (res.code === 200) {
+            delete this.dailyCache[this.selectedDate];
+            this.dailyFetchPromises = {};
             await this.loadDaily();
         }
         await this.service.render();
@@ -497,6 +690,8 @@ export class Component implements OnInit {
             this.editingMealId = null;
             this.editMealType = '';
             this.editMealContent = '';
+            delete this.dailyCache[this.selectedDate];
+            this.dailyFetchPromises = {};
             await this.loadDaily();
         }
         await this.service.render();
@@ -510,36 +705,151 @@ export class Component implements OnInit {
         }
     }
 
+    private startHwpProgress() {
+        this.hwpProgress = 0;
+        this._hwpTarget = 90;
+        this._hwpStartTime = Date.now();
+        this.hwpProgressLabel = '파일 업로드 중...';
+        const labelStages = [
+            { at: 10, label: '식단표 변환 중...' },
+            { at: 25, label: '메뉴 데이터 추출 중...' },
+            { at: 40, label: '알레르기 분석 중...' },
+            { at: 55, label: '데이터 저장 중...' },
+            { at: 70, label: '식단 정리 중...' },
+        ];
+        let labelIdx = 0;
+        // 시간 기반 증가: elapsed/(elapsed+halfTime) × target
+        // halfTime=3500 → 3초: 46%, 6초: 57%, 10초: 67%, 20초: 77%
+        const halfTime = 3500;
+        this._hwpProgressTimer = setInterval(async () => {
+            if (this.hwpProgress < this._hwpTarget) {
+                let newProgress: number;
+                if (this._hwpTarget >= 100) {
+                    // 완료: 빠르게 부드럽게 채움
+                    const step = Math.max(1.0, (this._hwpTarget - this.hwpProgress) * 0.12);
+                    newProgress = this.hwpProgress + step;
+                } else {
+                    // 작업 중: 시간 기반 자연 증가
+                    const elapsed = Date.now() - this._hwpStartTime;
+                    newProgress = this._hwpTarget * elapsed / (elapsed + halfTime);
+                }
+                this.hwpProgress = Math.min(Math.max(this.hwpProgress, newProgress), this._hwpTarget);
+                if (labelIdx < labelStages.length && this.hwpProgress >= labelStages[labelIdx].at) {
+                    this.hwpProgressLabel = labelStages[labelIdx].label;
+                    labelIdx++;
+                }
+            }
+            await this.service.render();
+        }, 50);
+    }
+
+    private stopHwpTimer() {
+        if (this._hwpProgressTimer) {
+            clearInterval(this._hwpProgressTimer);
+            this._hwpProgressTimer = null;
+        }
+    }
+
+    private setHwpTarget(target: number, label: string) {
+        this._hwpTarget = target;
+        this.hwpProgressLabel = label;
+    }
+
+    private async setHwpProgressValue(progress: number, label?: string) {
+        this.hwpProgress = Math.max(this.hwpProgress, Math.min(progress, 100));
+        if (label) {
+            this.hwpProgressLabel = label;
+        }
+        await this.service.render();
+    }
+
     public async onHwpFileSelected(event: any) {
         const file = event.target?.files?.[0];
         if (!file) return;
 
+
         this.hwpLoading = true;
+        this.startHwpProgress();
+        this.setHwpTarget(10, '파일 업로드 중...');
         await this.service.render();
 
         const formData = new FormData();
         formData.append('file', file);
 
         try {
+            // 1. 파일 업로드 완료
+            this.setHwpTarget(30, 'HWP 변환 중...');
             const response = await fetch('/wiz/api/page.note.meal/parse_hwp_meal', {
                 method: 'POST',
                 body: formData
             });
             const res = await response.json();
+
             if (res.code === 200) {
+                // 업로드 요청은 여기서 끝내고, 이후 후처리는 화면에서 계속 진행한다.
+                this.stopHwpTimer();
+                await this.setHwpProgressValue(35, '식단표 불러오는 중...');
                 const year = res.data.year;
                 const month = String(res.data.month).padStart(2, '0');
                 this.selectedMonth = `${year}-${month}`;
-                await this.loadMonthly();
-                await this.loadMealFiles();
+
+                // 2. 월간/파일 정보 로드
+                await Promise.all([this.loadMonthly(), this.loadMealFiles()]);
+                await this.setHwpProgressValue(50, '식단표 정리 중...');
+                this.dailyCache = {};
+                this.dailyFetchPromises = {};
+
+                this.selectedDate = this.getFirstMealDateInSelectedMonth();
+                if (this.getAvailableMealDates().length > 0) {
+                    this.seedDailyFromMonthly(this.selectedDate);
+
+                    const dates = this.getAvailableMealDates();
+                    const total = Math.max(dates.length, 1);
+                    await this.prefetchDailyDates(
+                        dates,
+                        6,
+                        async (done: number, progressTotal: number) => {
+                            const base = 50;
+                            const span = 45;
+                            const ratio = progressTotal > 0 ? done / progressTotal : 1;
+                            const progress = base + (span * ratio);
+                            await this.setHwpProgressValue(
+                                progress,
+                                `영양정보 저장 중... (${done}/${progressTotal})`
+                            );
+                        },
+                        false
+                    );
+                } else {
+                    this.resetDailyState();
+                }
+                this.mode = 'calendar';
+                this.showForm = false;
+                this.editingMealId = null;
+
+                // 3. 모든 작업 완료
+                await this.setHwpProgressValue(100, '완료!');
+                await new Promise(r => setTimeout(r, 800));
             } else {
+                this.stopHwpTimer();
+                this.hwpProgress = 100;
+                this.hwpProgressLabel = '실패';
+                await this.service.render();
+                await new Promise(r => setTimeout(r, 500));
                 alert(res.data?.message || '식단표 파싱에 실패했습니다.');
             }
         } catch (e) {
+            this.stopHwpTimer();
+            this.hwpProgress = 100;
+            this.hwpProgressLabel = '실패';
+            await this.service.render();
+            await new Promise(r => setTimeout(r, 500));
             alert('업로드 중 오류가 발생했습니다.');
         }
 
+        this.stopHwpTimer();
         this.hwpLoading = false;
+        this.hwpProgress = 0;
         if (this.hwpFileInput) {
             this.hwpFileInput.nativeElement.value = '';
         }
@@ -554,6 +864,10 @@ export class Component implements OnInit {
         if (res.code === 200) {
             await this.loadMonthly();
             await this.loadMealFiles();
+            this.dailyCache = {};
+            this.dailyFetchPromises = {};
+            this.selectedDate = this.getFirstMealDateInSelectedMonth();
+            this.resetDailyState();
         }
         await this.service.render();
     }
@@ -567,8 +881,11 @@ export class Component implements OnInit {
         this.reparseLoading = false;
         if (res.code === 200) {
             alert(`완료: ${res.data.message}`);
+            this.dailyCache = {};
+            this.dailyFetchPromises = {};
             await this.loadMonthly();
             await this.loadDaily();
+            await this.prefetchCurrentMonthDailyData(false, undefined, true);
         } else {
             alert('재파싱 실패. 다시 시도해주세요.');
         }

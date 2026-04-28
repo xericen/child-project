@@ -22,7 +22,8 @@
       div(*ngIf="!analysis && !dinnerLoading")
         .timeline
           //- 오전간식
-          .tl-block(*ngIf="morningSnack")
+          .tl-block(*ngIf="morningSnack",
+            '[class.allergy-danger]'="role === 'parent' && hasAllergyWarning('오전간식')")
             .tl-dot
             .tl-label 오전간식
             .tl-card
@@ -31,7 +32,8 @@
                 | ⚠️ {{ getAllergyText('오전간식') }}
 
           //- 점심
-          .tl-block(*ngIf="lunchMenu")
+          .tl-block(*ngIf="lunchMenu",
+            '[class.allergy-danger]'="role === 'parent' && hasAllergyWarning('점심')")
             .tl-dot
             .tl-label 점심
             .tl-card
@@ -40,7 +42,8 @@
                 | ⚠️ {{ getAllergyText('점심') }}
 
           //- 오후간식
-          .tl-block(*ngIf="afternoonSnack")
+          .tl-block(*ngIf="afternoonSnack",
+            '[class.allergy-danger]'="role === 'parent' && hasAllergyWarning('오후간식')")
             .tl-dot
             .tl-label 오후간식
             .tl-card
@@ -75,7 +78,8 @@
         //- 페이지 1: 타임라인 + 개별 칼로리
         div(*ngIf="currentPage === 0")
           .timeline
-            .tl-block(*ngFor="let meal of analysis.stage1?.meals || []")
+            .tl-block(*ngFor="let meal of analysis.stage1?.meals || []",
+              '[class.allergy-danger]'="role === 'parent' && hasAllergyWarning(meal.meal_type)")
               .tl-dot
               .tl-label {{ meal.meal_type }}
               .tl-card

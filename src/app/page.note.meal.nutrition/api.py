@@ -9,6 +9,7 @@ Users = wiz.model("db/login_db/users")
 Children = wiz.model("db/childcheck/children")
 ChildAllergies = wiz.model("db/childcheck/child_allergies")
 ServerMembers = wiz.model("db/login_db/server_members")
+NutritionMapping = wiz.model("db/childcheck/nutrition_mapping")
 
 # 공유 상수는 nutrition_api 인스턴스를 통해 접근
 _nutrition_api_ref = wiz.model("nutrition_api")
@@ -128,8 +129,11 @@ def get_dashboard():
     month_total = {k: 0.0 for k in DAYCARE_TARGET}
     daily_nutrients = {}  # date → {nutrient: value}
     daily_calories = {}
+    daily_menu_entries = {}
+    daily_meal_type_totals = {}
     estimated_count = 0
     total_menu_count = 0
+    decomposed_count = 0
 
     try:
         all_tasks = []
@@ -158,7 +162,20 @@ def get_dashboard():
                 total_menu_count += 1
                 if menu.get('is_estimated'):
                     estimated_count += 1
+                if menu.get('match_type') == 'decomposed':
+                    decomposed_count += 1
             scaled = nutrition_api.compute_scaled_nutrients(meal_result, meal_type, selected_age, day_kcal if meal_type == '점심' else None)
+
+            if date_str not in daily_menu_entries:
+                daily_menu_entries[date_str] = []
+            for menu in meal_result.get('menus', []):
+                menu_item = dict(menu)
+                menu_item['meal_type'] = meal_type
+                daily_menu_entries[date_str].append(menu_item)
+
+            if date_str not in daily_meal_type_totals:
+                daily_meal_type_totals[date_str] = {}
+            daily_meal_type_totals[date_str][meal_type] = scaled
 
             if date_str not in daily_nutrients:
                 daily_nutrients[date_str] = {k: 0.0 for k in DAYCARE_TARGET}
@@ -214,6 +231,32 @@ def get_dashboard():
 
     # AI 종합 분석 및 보충 조언
     summary = ""
+    daily_evaluations = {}
+    warning_counts = {}
+    for date_str, totals in daily_nutrients.items():
+        evaluation = nutrition_api.evaluate_daycare_nutrition(
+            totals,
+            daily_menu_entries.get(date_str, []),
+            daily_meal_type_totals.get(date_str, {})
+        )
+        daily_evaluations[date_str] = evaluation
+        for warning in evaluation.get('warnings', []):
+            key = warning.get('type', 'other')
+            if key not in warning_counts:
+                warning_counts[key] = {
+                    'type': key,
+                    'message': warning.get('message', ''),
+                    'days': 0,
+                }
+            warning_counts[key]['days'] += 1
+
+    evaluation = nutrition_api.evaluate_daycare_nutrition(
+        {k: (month_total.get(k, 0) / num_days if num_days > 0 else 0) for k in ['calories', 'carbohydrate', 'protein', 'fat', 'sodium']},
+        [item for items in daily_menu_entries.values() for item in items],
+        {}
+    )
+    evaluation['warnings'] = sorted(warning_counts.values(), key=lambda x: (-x['days'], x['type']))
+
     if deficient_nutrients:
         deficient_text = "\n".join([f"- {d['name']}: 달성률 {d['percent']}% (기준: {d['target']}, 일평균: {d['avg_daily']})" for d in deficient_nutrients])
         prompt = f"""{year}년 {mon}월 {selected_age} 어린이집 식단(점심+간식2회) 분석 결과입니다.
@@ -260,7 +303,10 @@ JSON 형식: {{"deficient_advice": [{{"name": "영양소명", "emoji": "🍊", "
         summary=summary,
         ages=list(DAYCARE_TARGETS.keys()),
         estimated_count=estimated_count,
-        total_menu_count=total_menu_count
+        total_menu_count=total_menu_count,
+        decomposed_count=decomposed_count,
+        evaluation=evaluation,
+        daily_evaluations=daily_evaluations
     )
 
     # 캐시 저장
@@ -272,3 +318,72 @@ JSON 형식: {{"deficient_advice": [{{"name": "영양소명", "emoji": "🍊", "
         pass
 
     wiz.response.status(200, **result, cached=False)
+
+
+def get_mapping_review_items():
+    role = wiz.session.get("role")
+    if role not in ("teacher", "director"):
+        wiz.response.status(403, message="권한이 없습니다.")
+
+    limit = int(wiz.request.query("limit", "200"))
+    rows = NutritionMapping.select().order_by(NutritionMapping.updated_at.desc()).limit(limit)
+    items = []
+
+    for row in rows:
+        try:
+            nutrients = json.loads(row.nutrients) if row.nutrients else {}
+        except Exception:
+            nutrients = {}
+
+        match_type = nutrients.get('match_type', '')
+        review_needed = bool(nutrients.get('review_needed'))
+        is_estimated = bool(nutrients.get('is_estimated'))
+        is_decomposed = bool(nutrients.get('is_decomposed'))
+        if not (review_needed or is_estimated or is_decomposed or match_type in ('similar', 'representative', 'manual')):
+            continue
+
+        items.append({
+            'menu_name': row.menu_name,
+            'matched_food_name': nutrients.get('matched_food_name', row.food_name or ''),
+            'lookup_query': nutrients.get('lookup_query', ''),
+            'source': row.source,
+            'match_type': match_type,
+            'match_reason': nutrients.get('match_reason', ''),
+            'review_needed': review_needed,
+            'note': nutrients.get('note', ''),
+            'is_estimated': is_estimated,
+            'is_decomposed': is_decomposed,
+            'decomposition_components': nutrients.get('decomposition_components', []),
+            'updated_at': row.updated_at.strftime('%Y-%m-%d %H:%M:%S') if hasattr(row.updated_at, 'strftime') else str(row.updated_at),
+        })
+
+    wiz.response.status(200, items=items)
+
+
+def save_manual_mapping():
+    role = wiz.session.get("role")
+    if role not in ("teacher", "director"):
+        wiz.response.status(403, message="권한이 없습니다.")
+
+    menu_name = wiz.request.query("menu_name", True).strip()
+    search_name = wiz.request.query("search_name", True).strip()
+    note = wiz.request.query("note", "수동 확정 매핑").strip()
+
+    fs = wiz.project.fs("data")
+    data = fs.read.json("nutrition_manual_mappings.json", default={'mappings': {}})
+    if not isinstance(data, dict):
+        data = {'mappings': {}}
+    mappings = data.get('mappings', {})
+    if not isinstance(mappings, dict):
+        mappings = {}
+
+    mappings[menu_name] = {
+        'search': search_name,
+        'note': note
+    }
+    data['mappings'] = mappings
+    fs.write.json("nutrition_manual_mappings.json", data)
+
+    nutrition_api = wiz.model("nutrition_api")
+    nutrition_api.clear_cache()
+    wiz.response.status(200, saved=True)

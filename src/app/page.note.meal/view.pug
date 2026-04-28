@@ -9,11 +9,16 @@ input(type="file",
     .header-row
       span.btn-back('(click)'="goBack()") ← 뒤로
 
-    // HWP 파싱 로딩
+    // HWP 파싱 로딩 (프로그레스 바)
     .hwp-loading(*ngIf="hwpLoading")
       .hwp-loading-content
-        p 📋 식단표를 분석하고 있습니다...
-        p.hwp-loading-sub 잠시만 기다려주세요
+        span.hwp-loading-icon 📋
+        p.hwp-loading-title 식단표 업로드 중
+        p.hwp-loading-label {{ hwpProgressLabel }}
+        .hwp-progress-wrap
+          .hwp-progress-track
+            .hwp-progress-fill('[style.width.%]'="hwpProgress")
+          span.hwp-progress-pct {{ hwpProgress | number:'1.0-0' }}%
 
     // 캘린더 모드 (기본)
     div(*ngIf="mode === 'calendar'")
@@ -113,7 +118,10 @@ input(type="file",
         span.day-theme-emoji {{ getThemeInfo(getDayTheme()).emoji }}
         span.day-theme-name 오늘의 테마: {{ getDayTheme() }}
 
-      div(*ngIf="meals.length === 0")
+      div(*ngIf="dailyLoading && meals.length === 0")
+        p.empty-msg 식단표를 불러오는 중입니다.
+
+      div(*ngIf="!dailyLoading && meals.length === 0")
         p.empty-msg 등록된 식단이 없습니다.
 
       .timeline(*ngIf="meals.length > 0")
@@ -163,6 +171,49 @@ input(type="file",
               .edit-actions
                 button.btn-edit-save('(click)'="updateMeal()") 저장
                 button.btn-edit-cancel('(click)'="cancelEdit()") 취소
+
+      //- 영양정보 카드
+      .ni-card(*ngIf="nutritionAgeKeys.length > 0 && meals.length > 0")
+        .ni-header
+          span.ni-title 영양정보
+          .ni-age-tabs(*ngIf="nutritionAgeKeys.length > 1")
+            span.ni-age-tab(*ngFor="let age of nutritionAgeKeys",
+              '[class.active]'="selectedNutritionAge === age",
+              '(click)'="selectNutritionAge(age)") {{ age }}
+          span.ni-age-single(*ngIf="nutritionAgeKeys.length === 1") {{ selectedNutritionAge }}
+        .ni-grid(*ngIf="nutrition")
+          .ni-item
+            span.ni-icon 🐄
+            span.ni-value {{ nutrition.calories | number:'1.0-0' }}
+            span.ni-unit kcal
+          .ni-item
+            span.ni-dot.dot-blue
+            span.ni-label 단백질
+            span.ni-value {{ nutrition.protein | number:'1.0-0' }}
+            span.ni-unit g
+          .ni-item
+            span.ni-dot.dot-red
+            span.ni-label 탄수화물
+            span.ni-value {{ nutrition.carbs | number:'1.0-0' }}
+            span.ni-unit g
+          .ni-item
+            span.ni-dot.dot-yellow
+            span.ni-label 칼슘
+            span.ni-value {{ nutrition.calcium | number:'1.0-0' }}
+            span.ni-unit mg
+          .ni-item
+            span.ni-icon 🧈
+            span.ni-label 지방
+            span.ni-value {{ nutrition.fat | number:'1.0-0' }}
+            span.ni-unit g
+          .ni-item
+            span.ni-dot.dot-green
+            span.ni-label 철분
+            span.ni-value {{ nutrition.iron | number:'1.1-1' }}
+            span.ni-unit mg
+        .ni-allergens(*ngIf="nutritionAllergens.length > 0")
+          span.ni-allergen-icon ⚠
+          span.ni-allergen-text {{ nutritionAllergens.join(',') }}
 
     // 영양분석 모드
     div(*ngIf="mode === 'nutrition'")

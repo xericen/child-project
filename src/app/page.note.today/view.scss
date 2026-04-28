@@ -200,6 +200,12 @@
   font-weight: 600;
 }
 
+// ====== 알레르기 카드 강조 (빨간 테두리) ======
+.tl-block.allergy-danger .tl-card {
+  border-color: #e74c3c;
+  background: #fff5f5;
+}
+
 // ====== 알레르기 인라인 ======
 .allergy-inline {
   display: flex;

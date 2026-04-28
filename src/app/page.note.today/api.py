@@ -1,5 +1,6 @@
 # pyright: reportUndefinedVariable=false, reportMissingImports=false
 import datetime
+import hashlib
 import json
 
 Meals = wiz.model("db/childcheck/meals")
@@ -28,12 +29,13 @@ def _get_gemini():
         def _get_client(self):
             return _genai.Client(api_key=self._api_key)
 
-        def ask(self, prompt, system_instruction=None):
+        def ask(self, prompt, system_instruction=None, max_tokens=1024):
             import time as _time
-            cfg = None
+            cfg = {}
             if system_instruction:
-                cfg = {"system_instruction": system_instruction}
-            for attempt in range(3):
+                cfg["system_instruction"] = system_instruction
+            cfg["max_output_tokens"] = max_tokens
+            for attempt in range(2):
                 try:
                     client = self._get_client()
                     response = client.models.generate_content(
@@ -43,10 +45,9 @@ def _get_gemini():
                     )
                     return response.text
                 except Exception as e:
-                    if '429' in str(e) and attempt < 2:
-                        wait = 10 * (attempt + 1)
-                        print(f"[Gemini] 429 rate limit, {wait}s 후 재시도 ({attempt+1}/3)")
-                        _time.sleep(wait)
+                    if '429' in str(e) and attempt < 1:
+                        print(f"[Gemini] 429 rate limit, 3s 후 재시도")
+                        _time.sleep(3)
                     else:
                         raise
 
@@ -179,9 +180,15 @@ def _classify_food_group(name):
     # 과일류
     if any(f in name for f in _FRUIT_KEYWORDS):
         return '과일류'
+    # 찐 채소류 간식 (고기류/곡류보다 먼저 체크 — '찐'+'채소명'은 간식)
+    if '찐' in name and any(kw in name for kw in ['단호박', '옥수수', '고구마', '감자', '브로콜리']):
+        return '채소류'
     # 김치류 (국/찌개보다 먼저 체크)
     if any(kw in name for kw in ['김치', '깍두기', '피클', '장아찌']):
         return '김치류'
+    # 죽류 → 곡류 (국류·고기류보다 먼저 체크 — 새우살죽, 호박죽 등)
+    if name.endswith('죽') or '죽' == name:
+        return '곡류'
     # 국/찌개/탕/스프
     if any(kw in name for kw in ['국', '찌개', '탕', '스프']):
         return '국류'
@@ -201,7 +208,7 @@ def _classify_food_group(name):
         '밥', '죽', '면', '국수', '빵', '식빵', '토스트', '시리얼',
         '감자', '고구마', '떡', '수제비', '파스타', '라면', '우동',
         '주먹밥', '볶음밥', '비빔밥', '잡곡', '현미', '쌀', '백설기',
-        '롤빵', '모닝빵',
+        '롤빵', '모닝빵', '단호박',
     ]):
         return '곡류'
     # 채소류 (나물, 무침 등)
@@ -235,12 +242,18 @@ def _ai_analyze_all_meals(meal_foods, age_group, db_kcal, db_protein, child_age)
     age_key = '3~5세' if child_age >= 3 else '1~2세'
     serving_table = MEAL_SERVING_COUNTS[age_key]
 
-    # 식품군별 1인1회 배식량 (g) — 가이드라인 기준
+    # 식품군별 1인1회 배식량 (g) — 가이드라인 기준 (점심용)
     _SERVING_GRAMS = {
         '1~2세': {'곡류': 90, '고기류': 30, '채소류': 30, '국류': 100, '김치류': 14, '과일류': 50, '우유': 200, '요구르트': 100},
         '3~5세': {'곡류': 130, '고기류': 45, '채소류': 40, '국류': 140, '김치류': 20, '과일류': 80, '우유': 200, '요구르트': 100},
     }
+    # 간식용 배식량 — 죽·빵 등은 점심보다 소량, 찐 채소·과일은 점심보다 많음
+    _SNACK_SERVING_GRAMS = {
+        '1~2세': {'곡류': 30, '고기류': 30, '채소류': 60, '국류': 100, '김치류': 14, '과일류': 50, '우유': 200, '요구르트': 100},
+        '3~5세': {'곡류': 40, '고기류': 45, '채소류': 80, '국류': 140, '김치류': 20, '과일류': 80, '우유': 200, '요구르트': 100},
+    }
     serving_grams = _SERVING_GRAMS.get(age_key, _SERVING_GRAMS['1~2세'])
+    snack_serving_grams = _SNACK_SERVING_GRAMS.get(age_key, _SNACK_SERVING_GRAMS['1~2세'])
 
     # 로컬 영양 DB 로드 (API/AI 호출 없이 결정적 결과)
     try:
@@ -283,36 +296,41 @@ def _ai_analyze_all_meals(meal_foods, age_group, db_kcal, db_protein, child_age)
             else:
                 servings_per_food = total_servings / n_foods
 
-            # 하이브리드: 로컬 DB에서 검색 시도
-            local_result = None
-            local_source = None
+            # 식품 DB 검색 (로컬DB + 유사매칭 + 식약처 API)
+            search_result = None
+            search_source = None
             if _napi and not is_substitute:
                 try:
-                    local_result, local_source = _napi.search_local(name)
+                    sr = _napi.search(name)
+                    if sr:
+                        search_result = sr
+                        search_source = sr.get('source', 'api')
                 except Exception:
                     pass
 
-            if local_result and local_source:
-                # DB 결과 사용 (per 100g → 배식량 기준 스케일)
-                sg = serving_grams.get(group, 50)
-                scale = (sg / 100.0) * servings_per_food
+            if search_result and search_source:
+                # DB 결과 사용 (per 100g → 배식량 기준 스케일, servings_per_food 미적용)
+                # 간식은 별도 배식량 적용 (죽·빵은 소량, 찐 채소·과일은 대량)
+                _sg_table = snack_serving_grams if meal_cat == '간식' else serving_grams
+                sg = _sg_table.get(group, 50)
+                scale = sg / 100.0
                 item = {
                     'name': name,
-                    'source': local_source,
+                    'source': search_source,
                     'is_substitute': is_substitute,
                     'is_estimated': False,
-                    'matched_name': local_result.get('name', name),
-                    'serving_size': f'{servings_per_food:.1f}회({sg}g)',
-                    'serving_ratio': round(servings_per_food, 2),
+                    'matched_name': search_result.get('name', name),
+                    'serving_size': f'{sg}g',
+                    'serving_ratio': round(scale, 2),
                     'category': group,
-                    'calories': round(float(local_result.get('calories', 0)) * scale, 1),
-                    'protein': round(float(local_result.get('protein', 0)) * scale, 1),
-                    'fat': round(float(local_result.get('fat', 0)) * scale, 1),
-                    'carbs': round(float(local_result.get('carbohydrate', local_result.get('carbs', 0))) * scale, 1),
-                    'calcium': round(float(local_result.get('calcium', 0)) * scale, 1),
-                    'iron': round(float(local_result.get('iron', 0)) * scale, 1),
+                    'calories': round(float(search_result.get('calories', 0)) * scale, 1),
+                    'protein': round(float(search_result.get('protein', 0)) * scale, 1),
+                    'fat': round(float(search_result.get('fat', 0)) * scale, 1),
+                    'carbs': round(float(search_result.get('carbohydrate', search_result.get('carbs', 0))) * scale, 1),
+                    'calcium': round(float(search_result.get('calcium', 0)) * scale, 1),
+                    'iron': round(float(search_result.get('iron', 0)) * scale, 1),
                 }
-                print(f"[분석] {mt}: {name} → {group}({local_source}, matched={item['matched_name']}) ×{scale:.2f} cal={item['calories']}kcal")
+                print(f"[분석] {mt}: {name} → {group}({search_source}, matched={item['matched_name']}) ×{scale:.2f} cal={item['calories']}kcal")
             else:
                 # 식품군 표준값 사용 (기존 방식)
                 item = {
@@ -377,6 +395,8 @@ def _ai_analyze_all_meals(meal_foods, age_group, db_kcal, db_protein, child_age)
             if not item['is_substitute']:
                 item['calories'] = round(item['calories'] * cal_ratio, 1)
                 item['protein'] = round(item['protein'] * prot_ratio, 1)
+                # 지방/탄수화물/칼슘/철분은 보정하지 않음 (식품군·DB 추정치 그대로 사용)
+                # 칼로리 비율로 미량영양소를 스케일링하면 부정확해짐
 
     # ── 결과 조립 ──
     final_cal = float(db_kcal) if db_kcal and db_kcal > 0 else round(raw_total_cal, 1)
@@ -411,6 +431,172 @@ def _ai_analyze_all_meals(meal_foods, age_group, db_kcal, db_protein, child_age)
     print(f"[영양분석] cal={total['calories']}kcal prot={total['protein']}g fat={total['fat']}g carbs={total['carbs']}g ca={total['calcium']}mg fe={total['iron']}mg")
 
     return {'meals': stage1_meals, 'total': total}
+
+
+# ── MealNutritionCache 헬퍼 ──
+
+def _get_nutrition_cache(server_id, meal_date, age_group):
+    """캐시에서 영양 분석 결과 조회. 없으면 None 반환."""
+    try:
+        row = MealNutritionCache.select().where(
+            (MealNutritionCache.server_id == server_id) &
+            (MealNutritionCache.meal_date == meal_date) &
+            (MealNutritionCache.age_group == age_group)
+        ).first()
+        if row is None:
+            return None
+        stage1 = json.loads(row.stage1_json)
+        # 캐시 데이터에 subtotal 누락 시 items에서 재계산
+        for meal in stage1:
+            if 'subtotal' not in meal:
+                sub = {'calories': 0.0, 'protein': 0.0, 'fat': 0.0, 'carbs': 0.0, 'calcium': 0.0, 'iron': 0.0}
+                for item in meal.get('items', []):
+                    if not item.get('is_substitute', False):
+                        for k in sub:
+                            sub[k] = round(sub[k] + item.get(k, 0), 1)
+                meal['subtotal'] = sub
+        total = {
+            'calories': float(row.total_calories),
+            'protein': float(row.total_protein),
+            'fat': float(row.total_fat),
+            'carbs': float(row.total_carbs),
+            'calcium': float(row.total_calcium),
+            'iron': float(row.total_iron),
+        }
+        print(f"[Cache HIT] server={server_id}, date={meal_date}, age={age_group}")
+        return {'meals': stage1, 'total': total}
+    except Exception as e:
+        print(f"[Cache] 조회 실패: {e}")
+        return None
+
+
+def _save_nutrition_cache(server_id, meal_date, age_group, stage1_result):
+    """영양 분석 결과를 캐시에 저장 (upsert)."""
+    try:
+        total = stage1_result['total']
+        stage1_json = json.dumps(stage1_result['meals'], ensure_ascii=False)
+        now = datetime.datetime.now(tz=KST)
+
+        existing = MealNutritionCache.select().where(
+            (MealNutritionCache.server_id == server_id) &
+            (MealNutritionCache.meal_date == meal_date) &
+            (MealNutritionCache.age_group == age_group)
+        ).first()
+
+        if existing:
+            MealNutritionCache.update(
+                total_calories=total['calories'],
+                total_protein=total['protein'],
+                total_fat=total['fat'],
+                total_carbs=total['carbs'],
+                total_calcium=total['calcium'],
+                total_iron=total['iron'],
+                stage1_json=stage1_json,
+                analyzed_at=now,
+            ).where(MealNutritionCache.id == existing.id).execute()
+            print(f"[Cache UPDATE] server={server_id}, date={meal_date}, age={age_group}")
+        else:
+            MealNutritionCache.create(
+                server_id=server_id,
+                meal_date=meal_date,
+                age_group=age_group,
+                total_calories=total['calories'],
+                total_protein=total['protein'],
+                total_fat=total['fat'],
+                total_carbs=total['carbs'],
+                total_calcium=total['calcium'],
+                total_iron=total['iron'],
+                stage1_json=stage1_json,
+                analyzed_at=now,
+            )
+            print(f"[Cache INSERT] server={server_id}, date={meal_date}, age={age_group}")
+    except Exception as e:
+        print(f"[Cache] 저장 실패: {e}")
+
+
+def _invalidate_nutrition_cache(server_id, meal_date=None):
+    """캐시 무효화. meal_date 지정 시 해당 날짜만, 미지정 시 서버 전체."""
+    try:
+        query = MealNutritionCache.delete().where(
+            MealNutritionCache.server_id == server_id
+        )
+        if meal_date is not None:
+            query = query.where(MealNutritionCache.meal_date == meal_date)
+        deleted = query.execute()
+        print(f"[Cache INVALIDATE] server={server_id}, date={meal_date}, deleted={deleted}")
+        return deleted
+    except Exception as e:
+        print(f"[Cache] 무효화 실패: {e}")
+        return 0
+
+# 기존 잘못된 캐시(cal_ratio 스케일링 적용) 전체 삭제 — 1회성 (플래그 파일로 중복 방지)
+try:
+    _purge_flag_fs = wiz.project.fs("data")
+    _purge_flag = "nutrition_cache_purged_v2.flag"
+    if not _purge_flag_fs.exists(_purge_flag):
+        _purged = MealNutritionCache.delete().execute()
+        _purge_flag_fs.write(_purge_flag, "purged")
+        if _purged > 0:
+            print(f"[Cache PURGE] 기존 영양 캐시 {_purged}건 삭제 (cal_ratio 보정 제거)")
+        # dinner cache도 무효화
+        try:
+            _dc_fs = wiz.project.fs("data", "dinner_cache")
+            for f in _dc_fs.files():
+                _dc_fs.delete(f)
+            print("[Cache PURGE] 저녁 추천 캐시 전체 삭제")
+        except Exception:
+            pass
+except Exception:
+    pass
+
+
+# ── Dinner Recommendation Cache (파일 기반) ──
+
+def _dinner_cache_key(server_id, meal_date, age_group, allergies):
+    allergy_str = ','.join(sorted(allergies)) if allergies else 'none'
+    h = hashlib.md5(allergy_str.encode()).hexdigest()[:8]
+    return f"{server_id}_{meal_date}_{age_group}_{h}"
+
+
+def _get_dinner_cache(server_id, meal_date, age_group, allergies):
+    try:
+        fs = wiz.project.fs("data", "dinner_cache")
+        key = _dinner_cache_key(server_id, meal_date, age_group, allergies)
+        fname = f"{key}.json"
+        if fs.exists(fname):
+            data = fs.read.json(fname, default=None)
+            if data:
+                print(f"[DinnerCache HIT] {key}")
+                return data
+    except Exception as e:
+        print(f"[DinnerCache] 조회 실패: {e}")
+    return None
+
+
+def _save_dinner_cache(server_id, meal_date, age_group, allergies, analysis):
+    try:
+        fs = wiz.project.fs("data", "dinner_cache")
+        key = _dinner_cache_key(server_id, meal_date, age_group, allergies)
+        fname = f"{key}.json"
+        fs.write.json(fname, analysis)
+        print(f"[DinnerCache SAVE] {key}")
+    except Exception as e:
+        print(f"[DinnerCache] 저장 실패: {e}")
+
+
+def _invalidate_dinner_cache(server_id, meal_date=None):
+    try:
+        fs = wiz.project.fs("data", "dinner_cache")
+        prefix = f"{server_id}_"
+        if meal_date:
+            prefix = f"{server_id}_{meal_date}_"
+        for f in fs.files():
+            if f.startswith(prefix) and f.endswith('.json'):
+                fs.delete(f)
+                print(f"[DinnerCache DELETE] {f}")
+    except Exception as e:
+        print(f"[DinnerCache] 무효화 실패: {e}")
+
 
 def _ai_verify_nutrition(items, age_group, total):
     """AI 최종 검증: 각 음식의 칼로리가 어린이 1인분 기준으로 합리적인지 확인.
@@ -481,15 +667,15 @@ ALLERGY_TYPE_TO_NUMBERS = {
 
 # 연령별 어린이집 제공분 목표 영양소 — nutrition_api.py 공유 상수에서 변환
 DAYCARE_TARGETS = {
-    '1~2': {'calories': 420, 'protein': 20, 'fat': 17, 'carbs': 73, 'calcium': 250, 'iron': 3.3},
-    '3~5': {'calories': 640, 'protein': 12.5, 'fat': 23, 'carbs': 102, 'calcium': 275, 'iron': 4.5},
+    '1~2': {'calories': 420, 'protein': 15, 'fat': 17, 'carbs': 73, 'calcium': 250, 'iron': 3.3},
+    '3~5': {'calories': 640, 'protein': 25, 'fat': 23, 'carbs': 102, 'calcium': 275, 'iron': 4.5},
 }
 DAYCARE_TARGET = DAYCARE_TARGETS['1~2']
 
 # 연령별 하루 전체 권장 섭취량 (급식표 기준)
 DAILY_TARGETS = {
-    '1~2': {'calories': 900, 'protein': 20, 'fat': 30, 'carbs': 130, 'calcium': 450, 'iron': 6},
-    '3~5': {'calories': 1400, 'protein': 25, 'fat': 45, 'carbs': 200, 'calcium': 550, 'iron': 7},
+    '1~2': {'calories': 1000, 'protein': 15, 'fat': 30, 'carbs': 130, 'calcium': 500, 'iron': 6},
+    '3~5': {'calories': 1400, 'protein': 20, 'fat': 45, 'carbs': 200, 'calcium': 600, 'iron': 7},
 }
 
 import re
@@ -1068,7 +1254,21 @@ def get_today_menu():
                 (ServerMembers.server_id == server_id) & (ServerMembers.role == "parent")
             )]
             if parent_ids:
-                child_ids = [c.id for c in Children.select().where(Children.user_id.in_(parent_ids))]
+                all_children = list(Children.select().where(Children.user_id.in_(parent_ids)))
+
+                # 교사인 경우: 본인 반 학생만 필터링
+                if role == "teacher":
+                    teacher_class = None
+                    try:
+                        teacher = Users.select(Users.class_name).where(Users.id == int(user_id)).first()
+                        if teacher and teacher.class_name:
+                            teacher_class = teacher.class_name
+                    except Exception:
+                        pass
+                    if teacher_class:
+                        all_children = [c for c in all_children if c.class_name == teacher_class]
+
+                child_ids = [c.id for c in all_children]
                 if child_ids:
                     _collect_allergy_data(ChildAllergies.select().where(ChildAllergies.child_id.in_(child_ids)))
         except Exception:
@@ -1238,6 +1438,17 @@ def _recommend_dinner_impl():
 
     # ── 전처리: 교사 대체식 선택 반영 + 연령별 분기 ──
     age_group = '3~5세' if child_age >= 3 else '1~2세'
+    child_allergies = children_info[0].get('allergies', []) if children_info else []
+
+    # ── 전체 추천 결과 캐시 체크 (stage1+2+3) ──
+    today = datetime.datetime.now(KST).date()
+    cached_analysis = _get_dinner_cache(server_id, today, age_group, child_allergies)
+    if cached_analysis:
+        wiz.response.status(200, analysis=cached_analysis)
+
+    import time as _perf_time
+    _t0 = _perf_time.time()
+
     meal_cleaned = {}
     for m in meals:
         raw = m['content'] or ''
@@ -1270,25 +1481,41 @@ def _recommend_dinner_impl():
         mt = m['meal_type']
         meal_foods[mt] = meal_cleaned.get(mt, '')
 
-    # ── 식품군 기반 영양 분석 (결정적, API/AI 미사용) ──
-    stage1_result = _ai_analyze_all_meals(
-        meal_foods, age_group, daily_total_kcal, daily_total_protein, child_age
-    )
+    # ── 식품군 기반 영양 분석 (캐시 우선, 미스 시 분석 후 캐시 저장) ──
+    today = datetime.datetime.now(KST).date()
+    cached = _get_nutrition_cache(server_id, today, age_group)
+    if cached:
+        stage1_result = cached
+    else:
+        stage1_result = _ai_analyze_all_meals(
+            meal_foods, age_group, daily_total_kcal, daily_total_protein, child_age
+        )
+        _save_nutrition_cache(server_id, today, age_group, stage1_result)
 
     stage1_meals = stage1_result['meals']
     raw_total = stage1_result['total']
     grand_total = dict(raw_total)
 
     stage1 = {'meals': stage1_meals, 'total': raw_total}
-    print(f"[Stage1 합계] AI 분석: {raw_total}")
+    _t1 = _perf_time.time()
+    print(f"[Stage1 합계] 재계산: {raw_total} ({_t1 - _t0:.1f}s)")
 
     # stage2_meals 구성
     stage2_meals = []
+    default_subtotal = {'calories': 0.0, 'protein': 0.0, 'fat': 0.0, 'carbs': 0.0, 'calcium': 0.0, 'iron': 0.0}
     for meal_data in stage1_meals:
+        sub = meal_data.get('subtotal', None)
+        if sub is None:
+            # subtotal이 없으면 items에서 재계산
+            sub = dict(default_subtotal)
+            for item in meal_data.get('items', []):
+                if not item.get('is_substitute', False):
+                    for k in sub:
+                        sub[k] = round(sub[k] + item.get(k, 0), 1)
         stage2_meals.append({
             'meal_type': meal_data['meal_type'],
             'items': meal_data['items'],
-            'subtotal': dict(meal_data['subtotal']),
+            'subtotal': dict(sub),
             'target_kcal': daily_total_kcal,
             'target_protein': daily_total_protein,
         })
@@ -1368,7 +1595,7 @@ def _recommend_dinner_impl():
         for k in daily_target
     ])
 
-    # 아이 나이에 따른 음식 가이드 생성
+    # 아이 나이 상세 텍스트
     child_age_months = 0
     if children_info:
         child_age_months = children_info[0].get('age_months', child_age * 12)
@@ -1376,57 +1603,16 @@ def _recommend_dinner_impl():
     age_remain_months = child_age_months % 12
     age_detail_text = f"만 {age_years}세 {age_remain_months}개월" if age_remain_months > 0 else f"만 {age_years}세"
 
-    if child_age_months <= 18:
-        food_guide = """이 아이는 이유식 완료기~유아식 초기 단계입니다.
-- 부드럽게 익히거나 잘게 다진 음식을 추천하세요
-- 1회 식사량은 성인의 1/4~1/3 수준입니다
-- 딱딱하거나 큰 덩어리 음식은 피해주세요"""
-    elif child_age_months <= 30:
-        food_guide = """이 아이는 유아식 단계입니다.
-- 다양한 식감이 가능하지만 작게 자른 음식을 추천하세요
-- 1회 식사량은 성인의 1/3~1/2 수준입니다
-- 간은 살짝 싱겁게 조리해주세요"""
-    elif child_age <= 3:
-        food_guide = """이 아이는 유아식 완성기입니다.
-- 대부분의 집밥 메뉴를 먹을 수 있지만 양을 줄여주세요
-- 1회 식사량은 성인의 1/2 수준입니다"""
-    else:
-        food_guide = """이 아이는 3~5세 유아입니다.
-- 일반 가정식을 먹을 수 있지만 양을 조절해주세요
-- 1회 식사량은 성인의 1/2~2/3 수준입니다"""
-
-    # 1인분 기준 중량 정보
-    serving_ref = wiz.model("nutrition_api")
-    age_group_key = '3~5세' if child_age >= 3 else '1~2세'
-    sw = serving_ref.SERVING_WEIGHTS.get(age_group_key, {})
-    serving_text = ", ".join([f"{k}={v}g" for k, v in sw.items()])
-
-    system_instruction = f"""당신은 어린이 영양 전문가입니다. 부족 영양소를 채우는 가정식 저녁 메뉴를 추천합니다.
-이 아이는 {age_detail_text}({age_group_key} 기준)입니다.
-{food_guide}
-
-반드시 아래 JSON 형식으로만 응답하세요.
-{{"menus": [{{"name": "메뉴명", "description": "간단 설명", "nutrients": {{"calories": 0, "protein": 0, "fat": 0, "carbs": 0, "calcium": 0, "iron": 0}}, "reason": "추천 이유"}}], "tip": "간단한 조리 팁"}}
-규칙:
-- 알레르기 식품은 절대 포함 금지
-- 내가 제공한 칼로리/영양소 수치를 절대 다시 계산하거나 추측하지 마세요
-- 영양소 단위: calories=kcal, protein/fat/carbs=g, calcium/iron=mg
-- 가정에서 쉽게 만들 수 있는 메뉴 2~3개 추천
-- 부족한 영양소를 채우는 메뉴 우선
-- 메뉴의 칼로리와 영양소는 반드시 아이 {age_detail_text}의 1인분 기준 ({age_group_key} 1인분 기준 중량: {serving_text})
-- 추천 메뉴의 총 칼로리는 부족분을 넘지 않도록 하세요"""
+    system_instruction = f"""어린이 영양 전문가. JSON만 응답.
+{{"menus":[{{"name":"메뉴명","description":"설명","nutrients":{{"calories":0,"protein":0,"fat":0,"carbs":0,"calcium":0,"iron":0}},"reason":"이유"}}],"tip":"팁"}}
+규칙: 알레르기 식품 금지. 가정식 2~3개. {age_detail_text} 아이 1인분 기준. 총칼로리≤부족분."""
 
     age_group = '3~5세' if child_age >= 3 else '1~2세'
-    prompt = f"""{age_detail_text} 아이({age_group} 기준)의 오늘 어린이집 식사 영양 정보:
-하루 전체 권장 섭취량: 칼로리 {daily_target['calories']}kcal, 단백질 {daily_target['protein']}g, 칼슘 {daily_target['calcium']}mg
-어린이집 실제 섭취량: {consumed_text}
-저녁에 보충 필요: {deficit_text}
-{age_group} 어린이 1인분 기준 중량: {serving_text}
-
-{allergy_text}
-부족한 영양소를 보충할 수 있는 저녁 메뉴를 추천해주세요.
-저녁 메뉴의 칼로리는 부족분({dinner_deficit.get('calories', 0)}kcal)에 맞춰주세요.
-중요: 모든 영양소 수치는 반드시 {age_detail_text} 아이의 1인분 기준으로 계산해주세요."""
+    prompt = f"""{age_detail_text}({age_group}) 저녁 추천.
+권장: cal {daily_target['calories']}kcal, prot {daily_target['protein']}g, ca {daily_target['calcium']}mg
+섭취: {consumed_text}
+부족: {deficit_text}
+{allergy_text}부족분({dinner_deficit.get('calories', 0)}kcal)에 맞는 저녁 메뉴 추천."""
 
     stage3 = {'menus': [], 'tip': ''}
 
@@ -1458,6 +1644,9 @@ def _recommend_dinner_impl():
                 issues.append(f"총 {total_kcal}kcal vs 부족분 {deficit_kcal}kcal (비율 {ratio:.1f})")
         return len(issues) == 0, issues
 
+    _t2 = _perf_time.time()
+    print(f"[Stage2] 계산 완료 ({_t2 - _t1:.1f}s)")
+
     def _ask_gemini(p, si):
         gemini = _get_gemini()
         return gemini.ask_json(p, system_instruction=si)
@@ -1466,35 +1655,13 @@ def _recommend_dinner_impl():
         result = _ask_gemini(prompt, system_instruction)
         if isinstance(result, dict) and 'menus' in result:
             ok, issues = _verify_dinner(result)
-            if ok:
-                stage3 = result
-                stage3['verified'] = True
-                print(f"[Stage3] 검증 통과")
+            stage3 = result
+            stage3['verified'] = ok
+            if not ok:
+                stage3['verification_issues'] = issues
+                print(f"[Stage3] 검증 이슈 (재시도 없이 수용): {issues}")
             else:
-                print(f"[Stage3] 검증 실패 (1차): {issues}")
-                # 보정 프롬프트로 재시도 (최대 1회)
-                retry_prompt = prompt + f"\n\n[주의] 이전 답변의 문제: {'; '.join(issues)}\n수정해서 다시 답변해주세요."
-                try:
-                    result2 = _ask_gemini(retry_prompt, system_instruction)
-                    if isinstance(result2, dict) and 'menus' in result2:
-                        ok2, issues2 = _verify_dinner(result2)
-                        if ok2:
-                            stage3 = result2
-                            stage3['verified'] = True
-                            print(f"[Stage3] 재시도 검증 통과")
-                        else:
-                            print(f"[Stage3] 재시도 검증 실패: {issues2}")
-                            stage3 = result2
-                            stage3['verified'] = False
-                            stage3['verification_issues'] = issues2
-                    else:
-                        stage3 = result
-                        stage3['verified'] = False
-                        stage3['verification_issues'] = issues
-                except Exception:
-                    stage3 = result
-                    stage3['verified'] = False
-                    stage3['verification_issues'] = issues
+                print(f"[Stage3] 검증 통과")
         else:
             stage3['tip'] = '저녁 메뉴 추천을 생성하지 못했습니다. 다시 시도해 주세요.'
             stage3['error'] = f"Gemini 응답 파싱 실패: {type(result).__name__}"
@@ -1506,7 +1673,12 @@ def _recommend_dinner_impl():
         stage3['traceback'] = traceback.format_exc()
         stage3['verified'] = False
 
+    _t3 = _perf_time.time()
+    print(f"[Stage3] Gemini 완료 ({_t3 - _t2:.1f}s)")
+    print(f"[recommend_dinner] 총 {_t3 - _t0:.1f}s (S1={_t1-_t0:.1f} S2={_t2-_t1:.1f} S3={_t3-_t2:.1f})")
+
     analysis = {'stage1': stage1, 'stage2': stage2, 'stage3': stage3}
+    _save_dinner_cache(server_id, today, age_group, child_allergies, analysis)
     wiz.response.status(200, analysis=analysis)
 
 def get_allergy_substitutes():
@@ -1530,9 +1702,24 @@ def get_allergy_substitutes():
     menu_text = "\n".join(f"- {m['meal_type']}: {m['content']}" for m in meals)
 
     child_detail_map = {}
-    for c in Children.select().where(Children.user_id.in_([sm.user_id for sm in ServerMembers.select(ServerMembers.user_id).where(
+    all_children = list(Children.select().where(Children.user_id.in_([sm.user_id for sm in ServerMembers.select(ServerMembers.user_id).where(
         (ServerMembers.server_id == server_id) & (ServerMembers.role == "parent")
-    )])):
+    )])))
+
+    # 교사인 경우: 본인 반 학생만 필터링
+    if role == "teacher":
+        user_id = wiz.session.get("id")
+        teacher_class = None
+        try:
+            teacher = Users.select(Users.class_name).where(Users.id == int(user_id)).first()
+            if teacher and teacher.class_name:
+                teacher_class = teacher.class_name
+        except Exception:
+            pass
+        if teacher_class:
+            all_children = [c for c in all_children if c.class_name == teacher_class]
+
+    for c in all_children:
         child_detail_map[c.id] = {'name': c.name, 'birthdate': str(c.birthdate) if c.birthdate else ''}
 
     category_info = ""

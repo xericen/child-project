@@ -1,5 +1,12 @@
 | 날짜 | ID | 작업 내용 | 상세 |
 |------|-----|----------|------|
+| 2026-04-28 | 001 | 오늘의 식단 알레르기 표시를 빨간 테두리 방식으로 변경 | [상세](devlog/2026-04-28/001-today-meal-allergy-red-border.md) |
+| 2026-04-22 | 001 | 식단표 업로드 속도 최적화 및 프로그레스바 UX 개선 | [상세](devlog/2026-04-22/001-meal-upload-speed-optimization.md) |
+| 2026-04-16 | 003 | 업로드 100% 완료 시점을 월간/일간 프리패치 완료 후로 조정 | [상세](devlog/2026-04-16/003-meal-upload-complete-after-prefetch.md) |
+| 2026-04-16 | 002 | 일일 식단 진입 지연 제거 및 월간 프리패치 적용 | [상세](devlog/2026-04-16/002-meal-daily-prefetch-and-cache.md) |
+| 2026-04-16 | 001 | 식단표 업로드 완료 시점과 초기 진입 상태 동기화 | [상세](devlog/2026-04-16/001-meal-upload-daily-state-sync.md) |
+| 2026-04-14 | 007 | MealNutritionCache 구현 — 영양 분석 캐시 시스템 | [상세](devlog/2026-04-14/007-meal-nutrition-cache.md) |
+| 2026-04-14 | 006 | 칼로리 계산 정확도 전면 개선 (cat_map·배식량·이중스케일·간식분기) | [상세](devlog/2026-04-14/006-calorie-accuracy-improvement.md) |
 | 2026-03-06 | 001 | Signup 인증번호 6자리 입력 UI 버그 수정 | [상세](devlog/2026-03-06/001-signup-code-input-fix.md) |
 | 2026-03-06 | 002 | Main Page 로그인 기능 구현 (users DB 연동) | [상세](devlog/2026-03-06/002-login-implementation.md) |
 | 2026-03-06 | 003 | 비밀번호 찾기 페이지 생성 (page.forgot) | [상세](devlog/2026-03-06/003-forgot-password-page.md) |
@@ -202,3 +209,8 @@
 | 2026-04-13 | 002 | 가이드라인 데이터 JSON 외부화 | [상세](devlog/2026-04-13/002-nutrition-guideline-json.md) |
 | 2026-04-13 | 003 | 저녁 추천 결과 검증 로직 추가 | [상세](devlog/2026-04-13/003-dinner-verify.md) |
 | 2026-04-13 | 004 | 식품 DB + 식품군 하이브리드 영양 분석 | [상세](devlog/2026-04-13/004-hybrid-nutrition.md) |
+| 2026-04-14 | 001 | 식단명 룰 기반 표준화 사전 구축 | [상세](devlog/2026-04-14/001-meal-name-normalization-rules.md) |
+| 2026-04-14 | 002 | 영양 매핑 3단계 파이프라인 및 매칭 메타데이터 추가 | [상세](devlog/2026-04-14/002-nutrition-matching-pipeline.md) |
+| 2026-04-14 | 003 | 복합 메뉴 분해 계산 규칙 및 캐시 연동 | [상세](devlog/2026-04-14/003-meal-decomposition-rules.md) |
+| 2026-04-14 | 004 | 영양 평가 기준 및 실무 경고 구조화 | [상세](devlog/2026-04-14/004-daycare-nutrition-evaluation.md) |
+| 2026-04-14 | 005 | 수동 매핑 및 검수 API 추가 | [상세](devlog/2026-04-14/005-mapping-review-api.md) |

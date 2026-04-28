@@ -104,6 +104,392 @@ ChildAllergies = wiz.model("db/childcheck/child_allergies")
 AllergyCategories = wiz.model("db/childcheck/allergy_categories")
 ServerMembers = wiz.model("db/login_db/server_members")
 MealSubstituteSelections = wiz.model("db/childcheck/meal_substitute_selections")
+MealNutritionCache = wiz.model("db/childcheck/meal_nutrition_cache")
+
+def _invalidate_nutrition_cache(server_id, meal_date=None):
+    """영양 분석 캐시 무효화. meal_date 지정 시 해당 날짜만, 미지정 시 서버 전체."""
+    try:
+        query = MealNutritionCache.delete().where(
+            MealNutritionCache.server_id == server_id
+        )
+        if meal_date is not None:
+            query = query.where(MealNutritionCache.meal_date == meal_date)
+        deleted = query.execute()
+        if deleted:
+            print(f"[Cache INVALIDATE] server={server_id}, date={meal_date}, deleted={deleted}")
+    except Exception as e:
+        print(f"[Cache] 무효화 실패: {e}")
+
+
+
+
+
+def _invalidate_dinner_cache(server_id, meal_date=None):
+    """저녁 추천 파일 캐시 무효화."""
+    try:
+        fs = wiz.project.fs("data", "dinner_cache")
+        prefix = f"{server_id}_"
+        if meal_date:
+            prefix = f"{server_id}_{meal_date}_"
+        for f in fs.files():
+            if f.startswith(prefix) and f.endswith('.json'):
+                fs.delete(f)
+    except Exception:
+        pass
+
+
+# ===== 영양 계산 (식품 DB 기반) =====
+
+# 식품군별 1회 분량 표준 영양값
+_FOOD_GROUP_STANDARDS = {
+    '곡류': {'calories': 190, 'protein': 2.5, 'fat': 0.3, 'carbs': 44.0, 'calcium': 2.4, 'iron': 0.56},
+    '고기류': {'calories': 50, 'protein': 5.0, 'fat': 2.0, 'carbs': 0.0, 'calcium': 11.1, 'iron': 1.17},
+    '채소류': {'calories': 7, 'protein': 0.5, 'fat': 0.0, 'carbs': 1.5, 'calcium': 10.4, 'iron': 0.33},
+    '국류': {'calories': 25, 'protein': 1.5, 'fat': 0.5, 'carbs': 2.0, 'calcium': 14.0, 'iron': 0.28},
+    '김치류': {'calories': 3, 'protein': 0.3, 'fat': 0.0, 'carbs': 0.5, 'calcium': 6.6, 'iron': 0.11},
+    '과일류': {'calories': 25, 'protein': 0.3, 'fat': 0.0, 'carbs': 6.0, 'calcium': 2.0, 'iron': 0.10},
+    '우유': {'calories': 120, 'protein': 6.4, 'fat': 6.0, 'carbs': 9.2, 'calcium': 210.0, 'iron': 0.20},
+    '요구르트': {'calories': 77, 'protein': 2.6, 'fat': 2.0, 'carbs': 12.0, 'calcium': 124.5, 'iron': 0.37},
+}
+
+_FRUIT_KW = [
+    '사과', '배', '바나나', '딸기', '수박', '포도', '귤', '오렌지', '키위',
+    '골드키위', '토마토', '방울토마토', '한라봉', '파인애플', '참외', '복숭아',
+    '자두', '감', '망고', '블루베리', '멜론', '체리', '앵두', '살구', '레몬',
+    '라임', '자몽', '석류', '무화과', '매실',
+]
+
+_SERVING_GRAMS = {
+    '1~2세': {'곡류': 90, '고기류': 30, '채소류': 30, '국류': 100, '김치류': 14, '과일류': 50, '우유': 200, '요구르트': 100},
+    '3~5세': {'곡류': 130, '고기류': 45, '채소류': 40, '국류': 140, '김치류': 20, '과일류': 80, '우유': 200, '요구르트': 100},
+}
+_SNACK_SERVING_GRAMS = {
+    '1~2세': {'곡류': 30, '고기류': 30, '채소류': 60, '국류': 100, '김치류': 14, '과일류': 50, '우유': 200, '요구르트': 100},
+    '3~5세': {'곡류': 40, '고기류': 45, '채소류': 80, '국류': 140, '김치류': 20, '과일류': 80, '우유': 200, '요구르트': 100},
+}
+
+def _classify_fg(name):
+    """음식명 → 식품군 분류"""
+    if '우유' in name and '두유' not in name:
+        return '우유'
+    if any(kw in name for kw in ['요구르트', '요거트', '유산균']):
+        return '요구르트'
+    if any(kw in name for kw in ['치즈', '밀크', '두유']):
+        return '우유'
+    if any(f in name for f in _FRUIT_KW):
+        return '과일류'
+    if '찐' in name and any(kw in name for kw in ['단호박', '옥수수', '고구마', '감자', '브로콜리']):
+        return '채소류'
+    if any(kw in name for kw in ['김치', '깍두기', '피클', '장아찌']):
+        return '김치류'
+    if name.endswith('죽') or '죽' == name:
+        return '곡류'
+    if any(kw in name for kw in ['국', '찌개', '탕', '스프']):
+        return '국류'
+    if any(kw in name for kw in [
+        '고기', '볶음', '조림', '구이', '튀김', '까스', '돈까스', '돈가스',
+        '너겟', '치킨', '불고기', '갈비', '제육', '탕수육', '소시지', '햄',
+        '베이컨', '닭', '돼지', '소고기', '쇠고기', '생선', '계란', '달걀',
+        '두부', '오믈렛', '스크램블', '만두', '어묵', '장조림', '수육',
+        '떡갈비', '미트볼', '카레', '커틀릿', '스테이크', '전', '부침',
+        '콩', '멸치', '새우', '오징어', '조개', '굴', '꽃게', '찜',
+        '동그랑땡', '완자', '탕수', '꼬치', '까스',
+    ]):
+        return '고기류'
+    if any(kw in name for kw in [
+        '밥', '죽', '면', '국수', '빵', '식빵', '토스트', '시리얼',
+        '감자', '고구마', '떡', '수제비', '파스타', '라면', '우동',
+        '주먹밥', '볶음밥', '비빔밥', '잡곡', '현미', '쌀', '백설기',
+        '롤빵', '모닝빵', '단호박',
+    ]):
+        return '곡류'
+    if any(kw in name for kw in [
+        '나물', '무침', '샐러드', '쌈', '채소', '야채',
+        '오이', '당근', '시금치', '콩나물', '숙주', '연근',
+    ]):
+        return '채소류'
+    return '채소류'
+
+
+def _calculate_meal_nutrition(server_id, date_str, age_group='1~2세'):
+    """날짜별 영양소 계산. MealNutritionCache 우선 사용, 없으면 직접 계산."""
+    # 1) 캐시 확인
+    try:
+        cached = MealNutritionCache.select().where(
+            (MealNutritionCache.server_id == server_id) &
+            (MealNutritionCache.meal_date == date_str) &
+            (MealNutritionCache.age_group == age_group)
+        ).first()
+        if cached:
+            result = {
+                'calories': float(cached.total_calories or 0),
+                'protein': float(cached.total_protein or 0),
+                'fat': float(cached.total_fat or 0),
+                'carbs': float(cached.total_carbs or 0),
+                'calcium': float(cached.total_calcium or 0),
+                'iron': float(cached.total_iron or 0),
+            }
+            items = []
+            if cached.stage1_json:
+                try:
+                    meals_data = json.loads(cached.stage1_json)
+                    for m in meals_data:
+                        for item in m.get('items', []):
+                            if not item.get('is_substitute', False):
+                                items.append(item)
+                except Exception:
+                    pass
+            return result, items
+    except Exception:
+        pass
+
+    # 2) 직접 계산
+    age_key = age_group
+    try:
+        _napi = wiz.model("nutrition_api")
+    except Exception:
+        _napi = None
+
+    meals_rows = list(Meals.select().where(
+        (Meals.server_id == server_id) & (Meals.meal_date == date_str)
+    ).order_by(Meals.id))
+
+    if not meals_rows:
+        return None, []
+
+    # DB 칼로리/단백질 합산
+    db_kcal = 0
+    db_protein = 0
+    meal_foods = {}
+    for row in meals_rows:
+        mt = row.meal_type
+        meal_foods[mt] = row.content or ''
+        if age_group == '1~2세':
+            db_kcal += int(row.kcal or 0)
+            db_protein += float(row.protein or 0)
+        else:
+            db_kcal += int(row.kcal_35 or row.kcal or 0)
+            db_protein += float(row.protein_35 or row.protein or 0)
+
+    sg_table = _SERVING_GRAMS.get(age_key, _SERVING_GRAMS['1~2세'])
+    snack_sg = _SNACK_SERVING_GRAMS.get(age_key, _SNACK_SERVING_GRAMS['1~2세'])
+
+    all_items = []
+    raw_cal = 0.0
+    raw_prot = 0.0
+    raw_fat = 0.0
+    raw_carbs = 0.0
+    raw_ca = 0.0
+    raw_fe = 0.0
+
+    CLEAN_PAT = re.compile(r'[ⓢⓄ①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳\d.]')
+    GREEN_PAT = re.compile(r'\{\{green:.*?\}\}')
+
+    for mt in ['오전간식', '점심', '오후간식']:
+        content = meal_foods.get(mt, '')
+        if not content:
+            continue
+        is_snack = mt != '점심'
+        _sg = snack_sg if is_snack else sg_table
+
+        # 메뉴명 추출 (green 마커 대체식 처리 포함)
+        parsed_items = []
+        prev_idx = None
+        for line in content.replace('\r\n', '\n').split('\n'):
+            line = line.strip()
+            if not line:
+                continue
+            greens = GREEN_PAT.findall(line)
+            line_cleaned = GREEN_PAT.sub('', line).strip()
+
+            if greens:
+                for raw in greens:
+                    gn = CLEAN_PAT.sub('', raw.replace('{{green:', '').replace('}}', '')).strip()
+                    if gn and gn not in ('/', '-'):
+                        if age_key == '1~2세':
+                            parsed_items.append((gn, False))
+                            if prev_idx is not None:
+                                parsed_items[prev_idx] = (parsed_items[prev_idx][0], True)
+                        else:
+                            parsed_items.append((gn, True))
+                if line_cleaned:
+                    cleaned = CLEAN_PAT.sub('', line_cleaned).strip()
+                    if cleaned and cleaned not in ('/', '-'):
+                        prev_idx = len(parsed_items)
+                        parsed_items.append((cleaned, False))
+                    else:
+                        prev_idx = None
+                else:
+                    prev_idx = None
+            else:
+                cleaned = CLEAN_PAT.sub('', line).strip()
+                if cleaned and cleaned not in ('/', '-'):
+                    prev_idx = len(parsed_items)
+                    parsed_items.append((cleaned, False))
+
+        for name, is_substitute in parsed_items:
+            if is_substitute:
+                continue
+            group = _classify_fg(name)
+            sg = _sg.get(group, 50)
+            scale = sg / 100.0
+
+            item = None
+            if _napi:
+                try:
+                    # search: 로컬DB + 유사매칭 + 식약처 API (정확도 우선)
+                    search_result = _napi.search(name)
+                    if search_result:
+                        item = {
+                            'name': name,
+                            'source': search_result.get('source', 'api'),
+                            'category': group,
+                            'serving_size': f'{sg}g',
+                            'calories': round(float(search_result.get('calories', 0)) * scale, 1),
+                            'protein': round(float(search_result.get('protein', 0)) * scale, 1),
+                            'fat': round(float(search_result.get('fat', 0)) * scale, 1),
+                            'carbs': round(float(search_result.get('carbohydrate', search_result.get('carbs', 0))) * scale, 1),
+                            'calcium': round(float(search_result.get('calcium', 0)) * scale, 1),
+                            'iron': round(float(search_result.get('iron', 0)) * scale, 1),
+                        }
+                except Exception:
+                    pass
+
+            if not item:
+                std = _FOOD_GROUP_STANDARDS.get(group, _FOOD_GROUP_STANDARDS['채소류'])
+                item = {
+                    'name': name,
+                    'source': 'food_group',
+                    'category': group,
+                    'serving_size': f'{sg}g',
+                    'calories': round(std['calories'], 1),
+                    'protein': round(std['protein'], 1),
+                    'fat': round(std['fat'], 1),
+                    'carbs': round(std['carbs'], 1),
+                    'calcium': round(std['calcium'], 1),
+                    'iron': round(std['iron'], 1),
+                }
+
+            raw_cal += item['calories']
+            raw_prot += item['protein']
+            raw_fat += item['fat']
+            raw_carbs += item['carbs']
+            raw_ca += item['calcium']
+            raw_fe += item['iron']
+            item['meal_type'] = mt
+            all_items.append(item)
+
+    # 칼로리 비례 보정
+    cal_ratio = 1.0
+    if db_kcal > 0 and raw_cal > 0:
+        cal_ratio = float(db_kcal) / raw_cal
+        if cal_ratio < 0.3 or cal_ratio > 3.0:
+            cal_ratio = 1.0
+
+    prot_ratio = 1.0
+    if db_protein > 0 and raw_prot > 0:
+        prot_ratio = float(db_protein) / raw_prot
+        if prot_ratio < 0.3 or prot_ratio > 3.0:
+            prot_ratio = 1.0
+
+    for item in all_items:
+        item['calories'] = round(item['calories'] * cal_ratio, 1)
+        item['protein'] = round(item['protein'] * prot_ratio, 1)
+        # 지방/탄수화물/칼슘/철분은 식품DB 추정치 그대로 사용 (cal_ratio 스케일링 제거)
+
+    total = {
+        'calories': float(db_kcal) if db_kcal > 0 else round(raw_cal, 1),
+        'protein': float(db_protein) if db_protein > 0 else round(raw_prot, 1),
+        'fat': round(raw_fat, 1),
+        'carbs': round(raw_carbs, 1),
+        'calcium': round(raw_ca, 1),
+        'iron': round(raw_fe, 1),
+    }
+
+    # 캐시 저장
+    try:
+        stage1_meals = []
+        by_mt = {}
+        for item in all_items:
+            mt = item.pop('meal_type', '')
+            if mt not in by_mt:
+                by_mt[mt] = []
+            by_mt[mt].append(item)
+        for mt in ['오전간식', '점심', '오후간식']:
+            if mt in by_mt:
+                stage1_meals.append({'meal_type': mt, 'items': by_mt[mt]})
+        MealNutritionCache.create(
+            server_id=server_id,
+            meal_date=date_str,
+            age_group=age_group,
+            total_calories=total['calories'],
+            total_protein=total['protein'],
+            total_fat=total['fat'],
+            total_carbs=total['carbs'],
+            total_calcium=total['calcium'],
+            total_iron=total['iron'],
+            stage1_json=json.dumps(stage1_meals, ensure_ascii=False),
+            analyzed_at=_now_kst()
+        )
+    except Exception:
+        pass
+
+    return total, all_items
+
+
+def _get_day_allergy_names(server_id, date_str):
+    """날짜의 전체 알레르기 번호를 식품명으로 변환"""
+    allergy_names = set()
+    try:
+        rows = Meals.select(Meals.allergy_numbers).where(
+            (Meals.server_id == server_id) & (Meals.meal_date == date_str)
+        )
+        for row in rows:
+            if row.allergy_numbers:
+                nums = json.loads(row.allergy_numbers) if isinstance(row.allergy_numbers, str) else row.allergy_numbers
+                for n in nums:
+                    if n in ALLERGY_MAP:
+                        allergy_names.add(ALLERGY_MAP[n])
+    except Exception:
+        pass
+    return sorted(allergy_names)
+
+
+def get_meal_nutrition():
+    """날짜별 영양 정보 API (연령별)"""
+    role = wiz.session.get("role")
+    if not role:
+        wiz.response.status(401, message="로그인이 필요합니다.")
+
+    server_id = _get_server_id()
+    date_str = wiz.request.query("date", "")
+    if not date_str:
+        date_str = datetime.date.today().strftime("%Y-%m-%d")
+
+    # 연령별 데이터 존재 여부 확인
+    nutrition_by_age = {}
+    try:
+        lunch_row = Meals.select(Meals.kcal, Meals.kcal_35).where(
+            (Meals.server_id == server_id) &
+            (Meals.meal_date == date_str) &
+            (Meals.meal_type == '점심')
+        ).first()
+        has_12 = lunch_row and lunch_row.kcal is not None if lunch_row else False
+        has_35 = lunch_row and lunch_row.kcal_35 is not None if lunch_row else False
+        if has_12:
+            total_12, _ = _calculate_meal_nutrition(server_id, date_str, '1~2세')
+            if total_12:
+                nutrition_by_age['1~2세'] = total_12
+        if has_35:
+            total_35, _ = _calculate_meal_nutrition(server_id, date_str, '3~5세')
+            if total_35:
+                nutrition_by_age['3~5세'] = total_35
+    except Exception:
+        pass
+
+    allergens = _get_day_allergy_names(server_id, date_str)
+    wiz.response.status(200, nutrition_by_age=nutrition_by_age, allergens=allergens)
+
 
 _GREEN_RE = re.compile(r'\{\{green:(.*?)\}\}')
 
@@ -514,7 +900,8 @@ JSON 형식: {{"numbers": [10]}}"""
     return []
 
 def _get_server_allergy_numbers(server_id):
-    """교사/원장용: 서버 내 모든 자녀의 알레르기 번호 합산 (세션 캐시 사용, 5분)"""
+    """교사/원장용: 서버 내 자녀의 알레르기 번호 합산 (세션 캐시 사용, 5분).
+    교사는 본인 반 학생만, 원장은 전체 학생."""
     import time as _time
     cache_key = "_server_allergy_cache"
     cached = wiz.session.get(cache_key)
@@ -533,6 +920,21 @@ def _get_server_allergy_numbers(server_id):
         )]
         if parent_ids:
             all_children = list(Children.select().where(Children.user_id.in_(parent_ids)))
+
+            # 교사인 경우: 본인 반 학생만 필터링
+            role = wiz.session.get("role")
+            if role == "teacher":
+                user_id = wiz.session.get("id")
+                teacher_class = None
+                try:
+                    teacher = Users.select(Users.class_name).where(Users.id == int(user_id)).first()
+                    if teacher and teacher.class_name:
+                        teacher_class = teacher.class_name
+                except Exception:
+                    pass
+                if teacher_class:
+                    all_children = [c for c in all_children if c.class_name == teacher_class]
+
             child_ids = [c.id for c in all_children]
             if child_ids:
                 for ca in ChildAllergies.select().where(ChildAllergies.child_id.in_(child_ids)):
@@ -601,7 +1003,8 @@ def get_monthly():
                 'id': row.id,
                 'meal_type': row.meal_type,
                 'content': row.content or '',
-                'theme': row.theme or ''
+                'theme': row.theme or '',
+                'photo_path': row.photo_path or ''
             })
     except Exception:
         pass
@@ -615,6 +1018,7 @@ def get_daily():
 
     server_id = _get_server_id()
     date_str = wiz.request.query("date", "")
+    skip_nutrition = wiz.request.query("skip_nutrition", "") == "1"
     if not date_str:
         date_str = datetime.date.today().strftime("%Y-%m-%d")
 
@@ -724,7 +1128,34 @@ def get_daily():
         for meal in meals:
             meal['content'] = _apply_parent_content(meal['content'], meal['id'], sub_selections, age_group)
 
-    wiz.response.status(200, meals=meals)
+    # 영양 정보 계산 (연령별 — 데이터 있는 연령대만)
+    nutrition_by_age = {}
+    allergen_names = []
+    if not skip_nutrition:
+        try:
+            # 해당 날짜 점심의 연령별 칼로리 존재 여부 확인
+            lunch_row = Meals.select(Meals.kcal, Meals.kcal_35).where(
+                (Meals.server_id == server_id) &
+                (Meals.meal_date == date_str) &
+                (Meals.meal_type == '점심')
+            ).first()
+            has_12 = lunch_row and lunch_row.kcal is not None if lunch_row else False
+            has_35 = lunch_row and lunch_row.kcal_35 is not None if lunch_row else False
+
+            if has_12:
+                total_12, _ = _calculate_meal_nutrition(server_id, date_str, '1~2세')
+                if total_12:
+                    nutrition_by_age['1~2세'] = total_12
+            if has_35:
+                total_35, _ = _calculate_meal_nutrition(server_id, date_str, '3~5세')
+                if total_35:
+                    nutrition_by_age['3~5세'] = total_35
+
+            allergen_names = _get_day_allergy_names(server_id, date_str)
+        except Exception:
+            pass
+
+    wiz.response.status(200, meals=meals, nutrition_by_age=nutrition_by_age, allergens=allergen_names)
 
 def toggle_substitute():
     role = wiz.session.get("role")
@@ -817,6 +1248,8 @@ def save_meal():
     type_label = type_labels.get(meal_type, meal_type)
     notify_parents(server_id, "meal", f"{meal_date} {type_label} 식단 등록", content, "/note/meal")
 
+    _invalidate_nutrition_cache(server_id, meal_date)
+    _invalidate_dinner_cache(server_id, meal_date)
     wiz.response.status(200)
 
 def update_meal():
@@ -842,6 +1275,17 @@ def update_meal():
         allergy_nums.update(nums) if isinstance(allergy_nums, set) else None
     allergy_nums_list = sorted(allergy_nums) if isinstance(allergy_nums, set) else allergy_nums
 
+    # 캐시 무효화를 위해 meal_date 조회
+    _meal_date = None
+    try:
+        _meal_row = Meals.select(Meals.meal_date).where(
+            (Meals.id == meal_id) & (Meals.server_id == server_id)
+        ).first()
+        if _meal_row:
+            _meal_date = str(_meal_row.meal_date)
+    except Exception:
+        pass
+
     try:
         Meals.update(
             meal_type=meal_type,
@@ -854,6 +1298,8 @@ def update_meal():
     except Exception as e:
         wiz.response.status(500, message=str(e))
 
+    _invalidate_nutrition_cache(server_id, _meal_date)
+    _invalidate_dinner_cache(server_id, _meal_date)
     wiz.response.status(200)
 
 def delete_meal():
@@ -863,11 +1309,25 @@ def delete_meal():
 
     server_id = _get_server_id()
     meal_id = int(wiz.request.query("id", True))
+
+    # 캐시 무효화를 위해 meal_date 조회
+    _meal_date = None
+    try:
+        _meal_row = Meals.select(Meals.meal_date).where(
+            (Meals.id == meal_id) & (Meals.server_id == server_id)
+        ).first()
+        if _meal_row:
+            _meal_date = str(_meal_row.meal_date)
+    except Exception:
+        pass
+
     try:
         Meals.delete().where((Meals.id == meal_id) & (Meals.server_id == server_id)).execute()
     except Exception as e:
         wiz.response.status(500, message=str(e))
 
+    _invalidate_nutrition_cache(server_id, _meal_date)
+    _invalidate_dinner_cache(server_id, _meal_date)
     wiz.response.status(200)
 
 # 식단 안내 파일 관련
@@ -1136,18 +1596,31 @@ def _parse_meal_html(html_content, styles_css=''):
         if len(rows) < 5:
             continue
         first_text = rows[0].get_text()
-        if re.search(r'\d{4}\s*년\s*\d{1,2}\s*월', first_text) and '식단' in first_text:
+        has_date = re.search(r'\d{4}\s*년\s*\d{1,2}\s*월', first_text)
+        has_meal = '식단' in first_text
+        if has_date and has_meal:
             meal_table = table
+            print(f"[HWP parse] 식단 테이블 발견: rows={len(rows)}, title='{first_text[:60]}'")
             break
+        elif has_date or has_meal:
+            print(f"[HWP parse] 후보 테이블 스킵: rows={len(rows)}, date={bool(has_date)}, meal={bool(has_meal)}, text='{first_text[:60]}'")
 
     if not meal_table:
-        return None, None, [], {}, {}
+        # 디버그: 모든 테이블의 첫 행 출력
+        for i, table in enumerate(tables):
+            trows = table.find_all('tr')
+            if trows:
+                ft = trows[0].get_text()[:80].strip()
+                if ft:
+                    print(f"[HWP parse] Table {i} (rows={len(trows)}): '{ft}'")
+        print(f"[HWP parse] 식단 테이블 미발견 (총 {len(tables)}개 테이블)")
+        return None, None, [], {}, {}, {}
 
     rows = meal_table.find_all('tr')
     title_text = rows[0].get_text()
     match = re.search(r'(\d{4})\s*년\s*(\d{1,2})\s*월', title_text)
     if not match:
-        return None, None, [], {}, {}
+        return None, None, [], {}, {}, {}
 
     year = int(match.group(1))
     month = int(match.group(2))
@@ -1445,6 +1918,8 @@ def parse_hwp_meal():
     with open(saved_path, 'wb') as wf:
         wf.write(file_data)
 
+    print(f"[HWP] 업로드: {original_name} → {file_name} ({len(file_data)} bytes)")
+
     if not os.path.isfile(saved_path):
         wiz.response.status(500, message="파일 저장에 실패했습니다.")
 
@@ -1459,8 +1934,10 @@ def parse_hwp_meal():
         )
         if result.returncode != 0:
             convert_error = result.stderr or "hwp5html 변환 실패"
+            print(f"[HWP] hwp5html 실패 (code={result.returncode}): {convert_error[:300]}")
     except Exception as e:
         convert_error = str(e)
+        print(f"[HWP] hwp5html 예외: {convert_error}")
 
     if not convert_error:
         xhtml_path = os.path.join(tmp_outdir, 'index.xhtml')
@@ -1468,10 +1945,17 @@ def parse_hwp_meal():
             try:
                 with open(xhtml_path, 'r', encoding='utf-8') as f:
                     html_content = f.read()
+                print(f"[HWP] XHTML 변환 성공: {len(html_content)} chars")
             except Exception as e:
                 convert_error = f"XHTML 읽기 오류: {str(e)}"
         else:
             convert_error = "XHTML 파일이 생성되지 않았습니다."
+            # tmp_outdir 내 파일 목록 출력
+            try:
+                tmp_files = os.listdir(tmp_outdir)
+                print(f"[HWP] tmp_outdir 파일: {tmp_files}")
+            except Exception:
+                pass
 
     # styles.css 읽기 (초록색 텍스트 감지용)
     styles_css = ''
@@ -1487,20 +1971,29 @@ def parse_hwp_meal():
     shutil.rmtree(tmp_outdir, ignore_errors=True)
 
     if convert_error:
-        try:
-            os.remove(saved_path)
-        except Exception:
-            pass
-        wiz.response.status(500, message=convert_error)
+        # 실패한 파일은 보존 (진단용)
+        print(f"[HWP] 변환 실패, 파일 보존: {saved_path}")
+        wiz.response.status(500, message=f"HWP 변환 실패: {convert_error[:200]}")
 
-    year, month, meals, daily_kcal, daily_protein, daily_theme = _parse_meal_html(html_content, styles_css)
+    try:
+        year, month, meals, daily_kcal, daily_protein, daily_theme = _parse_meal_html(html_content, styles_css)
+    except Exception as e:
+        import traceback
+        print(f"[HWP] _parse_meal_html 예외: {e}")
+        traceback.print_exc()
+        wiz.response.status(500, message=f"식단표 파싱 오류: {str(e)[:200]}")
+
+    print(f"[HWP] 파싱 결과: year={year}, month={month}, meals={len(meals) if meals else 0}건")
 
     if not meals:
-        try:
-            os.remove(saved_path)
-        except Exception:
-            pass
-        wiz.response.status(400, message="식단 데이터를 추출할 수 없습니다. 식단표 형식을 확인해주세요.")
+        # 실패한 파일은 보존 (진단용)
+        detail = ""
+        if year and month:
+            detail = f" (감지: {year}년 {month}월, 식단 0건)"
+        elif not year:
+            detail = " (년/월 감지 실패 — 식단표 테이블을 찾을 수 없음)"
+        print(f"[HWP] 식단 추출 실패{detail}, 파일 보존: {saved_path}")
+        wiz.response.status(400, message=f"식단 데이터를 추출할 수 없습니다{detail}. 식단표 형식을 확인해주세요.")
 
     month_str = f"{year}-{month:02d}"
 
@@ -1580,7 +2073,15 @@ def parse_hwp_meal():
     })
     fs.write.json("meta.json", meta)
 
+
+    # HWP 업로드 시 해당 월 전체 캐시 무효화
+    _invalidate_nutrition_cache(server_id)
+    _invalidate_dinner_cache(server_id)
+
     wiz.response.status(200, year=year, month=month, count=inserted)
+
+
+
 
 # ===== 식단 통계 =====
 # 기존에 저장된 HWP 파일을 재파싱하여 theme/green 마커 업데이트

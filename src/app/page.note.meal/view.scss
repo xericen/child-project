@@ -177,14 +177,14 @@
   margin-bottom: 32px;
 }
 
-/* HWP 파싱 로딩 */
+/* HWP 파싱 로딩 — 프로그레스 바 */
 .hwp-loading {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.95);
   border-radius: 32px;
   display: flex;
   align-items: center;
@@ -194,20 +194,58 @@
 
 .hwp-loading-content {
   text-align: center;
+  width: 260px;
 
-  p {
+  .hwp-loading-icon {
+    font-size: 2.4rem;
+    display: block;
+    margin-bottom: 12px;
+  }
+
+  .hwp-loading-title {
     font-size: 1rem;
     font-weight: 700;
-    color: #3a4de4;
-    margin: 0;
+    color: #1a1a2e;
+    margin: 0 0 6px 0;
   }
 
-  .hwp-loading-sub {
+  .hwp-loading-label {
     font-size: 0.8rem;
     font-weight: 400;
-    color: #999;
-    margin-top: 8px;
+    color: #888;
+    margin: 0 0 18px 0;
+    min-height: 1.2em;
   }
+}
+
+.hwp-progress-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.hwp-progress-track {
+  flex: 1;
+  height: 8px;
+  background: #eef0fb;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.hwp-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #3a4de4, #6c7bff);
+  border-radius: 4px;
+  transition: width 0.25s ease;
+  min-width: 0;
+}
+
+.hwp-progress-pct {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #3a4de4;
+  min-width: 36px;
+  text-align: right;
 }
 
 /* HWP 식단표 업로드/상태 영역 */
@@ -1973,5 +2011,128 @@
     color: #16a34a;
     font-weight: 600;
     margin-top: 8px;
+  }
+}
+
+// ===== 영양정보 카드 =====
+.ni-card {
+  background: #fff;
+  border-radius: 16px;
+  padding: 16px 18px;
+  margin-top: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+
+  .ni-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+
+  .ni-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: #1a1a2e;
+  }
+
+  .ni-age-tabs {
+    display: flex;
+    gap: 4px;
+    background: #f0f0f5;
+    border-radius: 8px;
+    padding: 2px;
+  }
+
+  .ni-age-tab {
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    color: #888;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-weight: 500;
+
+    &.active {
+      background: #3a4de4;
+      color: #fff;
+      font-weight: 600;
+    }
+  }
+
+  .ni-age-single {
+    font-size: 12px;
+    color: #888;
+    font-weight: 500;
+  }
+
+  .ni-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px 16px;
+  }
+
+  .ni-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: #333;
+  }
+
+  .ni-icon {
+    font-size: 16px;
+    width: 20px;
+    text-align: center;
+    flex-shrink: 0;
+  }
+
+  .ni-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+
+    &.dot-blue { background: #3a4de4; }
+    &.dot-red { background: #ef4444; }
+    &.dot-yellow { background: #f59e0b; }
+    &.dot-green { background: #22c55e; }
+  }
+
+  .ni-label {
+    color: #666;
+    font-size: 13px;
+  }
+
+  .ni-value {
+    font-weight: 700;
+    font-size: 14px;
+    color: #1a1a2e;
+  }
+
+  .ni-unit {
+    font-size: 12px;
+    color: #999;
+    margin-left: -2px;
+  }
+
+  .ni-allergens {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid #f0f0f0;
+
+    .ni-allergen-icon {
+      color: #ef4444;
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+
+    .ni-allergen-text {
+      font-size: 13px;
+      color: #666;
+      word-break: keep-all;
+    }
   }
 }
